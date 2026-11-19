@@ -95,6 +95,12 @@ button:focus-visible, canvas:focus-visible, input:focus-visible { outline: 3px s
 .toast { position:absolute; top:3%; left:50%; transform:translateX(-50%); max-width:96%; padding:5px 12px; background:#101728f2; color:var(--amber); border:1px solid #b68e5f; white-space:nowrap; font-size:clamp(11px,1.2vw,14px); font-weight:800; opacity:0; pointer-events:none; }.toast.show {opacity:1;}
 .attack-hint { position:absolute; bottom:1%; left:0; right:0; text-align:center; color:#ffdf9e; font-size:12px; pointer-events:none; }
 .control-row { align-items:stretch; gap:8px; margin:8px 0 0; height:59px; }
+.control-row, .control-row *, .input-note, .input-note * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.move-strip > * { pointer-events: none; }
 .move-strip,.submit-button { display:flex; flex-direction:column; justify-content:center; align-items:center; border:1px solid #526079; border-radius:5px; background:#242e43; }
 .move-strip { position:relative; overflow:hidden; flex:1; min-width:0; padding-bottom:6px; touch-action:none; user-select:none; cursor:ew-resize; }.move-strip.active {background:#29494b;}.move-strip strong,.submit-button strong {font-size:14px;}.move-strip small,.submit-button small {font-size:11px; color:var(--muted);}.strip-track { position:absolute;left:5px;right:5px;bottom:4px;height:2px;background:#44516a; }.strip-track i { position:absolute;top:-1px;width:8px;height:4px;background:var(--mint);transform:translateX(-50%); }
 .submit-button { width:33%; min-width:93px; color:#302437; background:var(--amber); border-color:#ffdc90; }.submit-button small {color:#58434c;}.submit-button:disabled { background:#1a2233;color:#adb5c8;border-color:#3c455b;}.submit-button:disabled small {color:#a5b1c6;}

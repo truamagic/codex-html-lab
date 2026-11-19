@@ -201,6 +201,12 @@
     lastHud = ''; updateHud();
   });
   const strip = $('moveStrip');
+  // The strip uses pointer events exclusively. Keep native selection and touch menus off it.
+  function preventStripGesture(event) { event.preventDefault(); }
+  strip.addEventListener('touchstart', preventStripGesture, { passive: false });
+  strip.addEventListener('selectstart', preventStripGesture);
+  strip.addEventListener('dragstart', preventStripGesture);
+  strip.addEventListener('contextmenu', preventStripGesture);
   strip.addEventListener('pointerdown', e => {
     if (e.button !== 0 || movePointer !== null || !game || dialog.open || game.state.paused) return;
     e.preventDefault(); movePointer = e.pointerId; lastPointerX = e.clientX; targetX = game.state.player.x;
