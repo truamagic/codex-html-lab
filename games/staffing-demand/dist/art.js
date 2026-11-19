@@ -392,7 +392,7 @@
   }
 
   function drawDocument(ctx, doc, clock) {
-    if (!doc || !doc.visible || doc.collected) return;
+    if (doc.collected) return;
     const x = doc.x, y = doc.y + Math.sin(clock * 4) * 2;
     ctx.save();
     ctx.fillStyle = '#ffce6a1f'; ctx.fillRect(x - 26, y - 30, 52, 60);
@@ -402,7 +402,7 @@
       strokeLine(ctx, x + dir * 26, y - 30, x + dir * 15, y - 30, '#ffcf64', 3);
       strokeLine(ctx, x + dir * 26, y + 29, x + dir * 15, y + 29, '#ffcf64', 3);
     }
-    label(ctx, '資料', x, y - 46, 17, '#ffdc89');
+    label(ctx, doc.label, x, y - 43, 15, '#ffdc89');
     ctx.restore();
   }
 
@@ -429,6 +429,18 @@
       const x = value(bullet.x, -30);
       const y = value(bullet.y, -30);
       const radius = Math.max(1, value(bullet.r, 8));
+      if (bullet.kind === 'finale') {
+        // A short tail makes the direction readable without obscuring the gaps.
+        ctx.fillStyle = 'rgba(255,132,107,.46)';
+        ctx.beginPath();
+        ctx.moveTo(x - radius + 1, y);
+        ctx.lineTo(x - bullet.vx * .06, y - 15);
+        ctx.lineTo(x + radius - 1, y);
+        ctx.fill();
+        circle(ctx, x, y, radius, '#ff936f');
+        circle(ctx, x, y, 2.2, '#fff0c2');
+        continue;
+      }
       circle(ctx, x, y, radius, bullet.kind === 'corridor' ? '#ff946d' : C.coral);
       ctx.strokeStyle = "rgba(255,231,218,0.60)";
       ctx.lineWidth = 1;
@@ -548,7 +560,9 @@
     drawWindow(ctx, s.window, submitActive, completed);
     drawBarrier(ctx, barrier);
     drawWeakPoint(ctx, barrier);
-    drawDocument(ctx, s.document, clock);
+    if (s.document.visible) {
+      for (const item of s.document.items) drawDocument(ctx, item, clock);
+    }
     drawShots(ctx, s.shots);
     drawBullets(ctx, s.bullets);
     drawDemand(ctx, s.demand);

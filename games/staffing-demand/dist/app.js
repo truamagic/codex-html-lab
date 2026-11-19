@@ -5,16 +5,16 @@
     $('menuView').innerHTML = '<div class="error-panel">ゲームの読み込みに失敗しました。ページを再読み込みしてください。</div>';
     return;
   }
-  const { Game, STAGES, CONFIG } = globalThis.StaffingEngine;
+  const { Game, STAGES, CONFIG, finalPatterns } = globalThis.StaffingEngine;
   const Art = globalThis.StaffingArt;
   const labels = { easy: 'やさしい', normal: 'ふつう', hard: 'むずかしい' };
-  const phaseLabels = { guide: '操作ガイド', caucus: '団交休憩', minutes: '議事録確認', questions: '最終確認', collect: '資料回収', break: '反論突破', submit: '提出待ち', submission: '提出中', stageClear: '合意成立', adopted: '採択' };
+  const phaseLabels = { guide: '操作ガイド', caucus: '団交休憩', minutes: '議事録確認', questions: '最後の抵抗', collect: '資料回収', break: '反論突破', submit: '提出待ち', submission: '提出中', stageClear: '合意成立', adopted: '採択' };
   const feedback = window.ArcadeFeedback;
   const canvas = $('arena'), ctx = canvas.getContext('2d');
   let newBest = false;
   function refreshMenu() {
     const selected = document.querySelector('input[name="difficulty"]:checked').value;
-    const remarks = { easy: '広い弱点とゆっくりした弾で、交渉の流れを体験。', normal: '弱点を狙い、弾の切れ目で位置を変えよう。', hard: '資料回収後は動く弾の通路へ。折り返しを読みながら弱点を狙おう。' };
+    const remarks = { easy: '資料は各段階2枚。広い通路で、ゆっくり弾をかわそう。', normal: '資料は各段階3枚。前後左右に拾いに行こう。', hard: '資料は各段階4枚。最終弾幕では、折り返す狭い通路を抜けよう。' };
     $('difficultyInfo').textContent = remarks[selected];
     const record = feedback.best(selected);
     $('menuRecord').textContent = record === null ? 'ベスト記録　―' : '最少被弾　' + record + ' 回';
@@ -108,11 +108,11 @@
     ]
   };
   const minutes = {
-    title: '閉会……？ 理事長が書類を閉じた', action: '最終確認へ',
+    title: '閉会……？ 理事長が書類を閉じた', action: '理事会の最後の抵抗へ',
     lines: [
       ['理事長', '前向きに検討します。'],
       ['書記', '議事録には、いつまでに回答すると書きますか？'],
-      ['理事長', '……では、配置の時期と担当者、それから人数を確認しましょう。']
+      ['理事長', '……では、理事全員から最後に一つずつ。配置はいつ、誰が、何人です？']
     ]
   };
   function sceneFor(s) {
@@ -194,7 +194,7 @@
   function showHelp() {
     helpReturn = { mode, modalKind, wasPaused: !!game?.state.paused };
     if (game && game.state.phase !== 'adopted') game.pause('遊び方を確認中');
-    showDialog('help', `<div class="dialog-body"><p class="dialog-eyebrow">遊び方</p><h2 id="dialogTitle">根拠を集めて、採択へ。</h2><ol class="help-list"><li><strong>資料を回収。</strong> 弾の予告を見てよけながら、白い資料に触れます。資料は取るまで残ります。</li><li><strong>反論を突破。</strong> 資料を取ると金色の弱点が開きます。真下に移動し、自動ショットを当てましょう。ふつう以上では弱点が移ります。</li><li><strong>要求書を提出。</strong> 提出口の真下に移動し、提出ボタンを押します。外したら提出だけ再挑戦できます。</li></ol><div class="help-controls"><p><strong>PC：</strong>矢印キー／WASDで前後左右に移動、Spaceで提出、Escで一時停止。</p><p><strong>スマホ：</strong>下段のパッドで上下左右にスライド。指を離すと止まります。要求書はパッドの一段上のボタンで提出します。</p></div><p class="dialog-copy">3段階を通すと人員増が採択されます。被弾しても交渉は続き、被弾回数がクリア評価に反映されます。</p><div class="dialog-actions">${button('closeHelp', '戻る', true)}</div></div>`);
+    showDialog('help', `<div class="dialog-body"><p class="dialog-eyebrow">遊び方</p><h2 id="dialogTitle">根拠を集めて、採択へ。</h2><ol class="help-list"><li><strong>資料を回収。</strong> 白い資料を好きな順に全部集めます。やさしいは2枚、ふつうは3枚、むずかしいは4枚です。</li><li><strong>反論を突破。</strong> 資料がそろうと金色の弱点が開きます。真下に移動し、自動ショットを当てましょう。ふつう以上では弱点が移ります。</li><li><strong>要求書を提出。</strong> 第3段階の最後は回避に専念。3波の弾幕が通り過ぎたら、提出口の真下で提出ボタンを押します。外したら提出だけ再挑戦できます。</li></ol><div class="help-controls"><p><strong>PC：</strong>矢印キー／WASDで前後左右に移動、Spaceで提出、Escで一時停止。</p><p><strong>スマホ：</strong>下段のパッドで上下左右にスライド。指を離すと止まります。要求書はパッドの一段上のボタンで提出します。</p></div><p class="dialog-copy">3段階を通すと人員増が採択されます。被弾しても交渉は続き、被弾回数がクリア評価に反映されます。</p><div class="dialog-actions">${button('closeHelp', '戻る', true)}</div></div>`);
   }
   function closeHelp() {
     const back = helpReturn; closeDialog(); helpReturn = null;
@@ -207,7 +207,7 @@
   function updateHud() {
     if (!game) return;
     const s = game.state, stage = stageData();
-    const value = [s.stage,s.phase,s.hits,s.document.collected,s.document.visible,s.barrier.hp,s.paused,s.hitLine,s.cue,sceneIndex].join('|');
+    const value = [s.stage,s.phase,s.hits,s.document.count,s.document.visible,s.barrier.hp,s.paused,s.hitLine,s.cue,sceneIndex].join('|');
     if (value === lastHud) return; lastHud = value;
     $('stageCount').textContent = `第${s.stage + 1}段階 / 3`;
     $('stageTitle').textContent = ['必要性を示す','費用と効果を示す','実施計画を示す'][s.stage];
@@ -217,20 +217,22 @@
     $('documentTitle').textContent = stage.documentTitle;
     $('documentSummary').textContent = s.document.collected ? stage.documentPoints.join(' ／ ') : stage.documentSummary;
     const corridor = s.phase === 'break' && s.difficulty === 'hard';
-    $('stageTactic').textContent = corridor ? ['弾の列に開いた通路が横へ移ります。紙飛行機をその隙間に入れましょう。','通路が途中で折り返します。先走らず、次の列の隙間を見ましょう。','通路が二度折り返します。金色の弱点から一度離れても、与えたダメージは残ります。'][s.stage] : stage.attackHint;
+    $('stageTactic').textContent = s.phase === 'questions' ? '緑の枠が次に出る弾列の隙間です。自機に近い列を先にかわしましょう。' : corridor ? ['弾の列に開いた通路が横へ移ります。紙飛行機をその隙間に入れましょう。','通路が途中で折り返します。先走らず、次の列の隙間を見ましょう。','通路が二度折り返します。金色の弱点から一度離れても、与えたダメージは残ります。'][s.stage] : stage.attackHint;
     $('gameView').dataset.phase = s.phase;
-    $('documentStatus').textContent = s.document.collected ? '回収済み' : '未回収';
+    $('touchNote').textContent = s.phase === 'questions' ? '緑の枠は、次に出る弾列の隙間' : '通常ショットは自動で発射';
+    const progress = `${s.document.count}/${s.document.items.length}枚`;
+    $('documentStatus').textContent = `${progress} 回収`;
     $('documentStatus').classList.toggle('collected', s.document.collected);
     document.querySelectorAll('[data-step]').forEach(el => { const i = Number(el.dataset.step); el.classList.toggle('current', i === s.stage); el.classList.toggle('complete', i < s.stage); el.querySelector('.step-number').textContent = i < s.stage ? '✓' : String(i + 1); });
     $('phaseLabel').textContent = phaseLabels[s.phase] || '';
     const ready = s.phase === 'submit' && !s.paused && !dialog.open;
     $('submitButton').disabled = !ready;
-    $('submitHint').textContent = s.phase === 'submission' ? '届くまで待とう' : ready ? (innerWidth <= 680 ? 'タップで提出' : 'Spaceでも提出') : '反論突破後';
+    $('submitHint').textContent = s.phase === 'submission' ? '届くまで待とう' : ready ? (innerWidth <= 680 ? 'タップで提出' : 'Spaceでも提出') : s.stage === 2 ? '弾幕を抜けて提出' : '反論突破後';
     const submitted = ['submit','submission'].includes(s.phase) || (s.phase === 'guide' && s.barrier.hp <= 0);
     $('phaseHint').classList.toggle('ready', submitted);
-    $('phaseHint').textContent = submitted ? (s.phase === 'submission' ? '要求書を届けています' : '提出口の真下から提出しよう') : s.document.collected ? (corridor ? '弾の隙間を抜け、弱点を狙おう' : s.difficulty === 'easy' ? '自動ショットで反論を崩そう' : '金色の弱点の真下を狙おう') : s.document.visible ? `${stage.documentTitle}を回収` : '予告を見て、弾をよけよう';
-    if (s.phase === 'questions') $('phaseHint').textContent = `第${s.attackCycle + 1}波の反論をかわそう`;
-    else if (s.cue) $('phaseHint').textContent = s.cue;
+    $('phaseHint').textContent = submitted ? (s.phase === 'submission' ? '要求書を届けています' : '提出口の真下から提出しよう') : s.document.collected ? (corridor ? '弾の隙間を抜け、弱点を狙おう' : s.difficulty === 'easy' ? '自動ショットで反論を崩そう' : '金色の弱点の真下を狙おう') : s.document.visible ? `資料をすべて回収　${progress}` : '予告を見て、弾をよけよう';
+    if (s.phase === 'questions') $('phaseHint').textContent = `${s.attackCycle + 1}/3波　${finalPatterns[s.attackCycle]}`;
+    else if (s.cue && !s.document.visible) $('phaseHint').textContent = s.cue;
     if (scene) {
       $('phaseHint').textContent = scene.title;
       $('sceneNext').textContent = sceneIndex < scene.lines.length - 1
@@ -238,7 +240,7 @@
     }
     $('attackHint').textContent = s.phase === 'break' ? stage.documentPoints[s.barrier.section] : '';
     $('attackHint').hidden = s.phase !== 'break';
-    const aria = `第${s.stage+1}段階。${phaseLabels[s.phase]}。被弾${s.hits}回。資料${s.document.collected ? '回収済み' : '未回収'}。`;
+    const aria = `第${s.stage+1}段階。${phaseLabels[s.phase]}。被弾${s.hits}回。資料${progress}回収。`;
     if (aria !== lastAria) { canvas.setAttribute('aria-label', aria); lastAria = aria; }
   }
   function trySubmit() {
@@ -333,12 +335,13 @@
         game.step(dt, { axis, axisY, targetX, targetY });
         artClock += dt;
       }
-      feedback.music(!dialog.open && !game.state.paused && ['collect','break'].includes(game.state.phase), game.state.stage);
+      feedback.music(!dialog.open && !game.state.paused && ['collect','break','questions'].includes(game.state.phase), game.state.stage);
       for (const event of game.drainEvents()) {
         feedback.cue(event.type);
         if (event.type === 'adopted') newBest = feedback.finish(game.getResults());
-        if (event.type === 'docCollected') notify('根拠資料を回収！');
-        else if (event.type === 'minutesRecorded' || (event.type === 'barrierBroken' && event.stage !== 2)) notify('反論を突破！ 要求書を提出しよう');
+        if (event.type === 'docCollected') notify(`${event.label}　${event.count}/${event.total}枚`);
+        else if (event.type === 'minutesRecorded') notify('最後の抵抗を突破！ 要求書を提出しよう');
+        else if (event.type === 'barrierBroken' && event.stage !== 2) notify('反論を突破！ 要求書を提出しよう');
         else if (event.type === 'submitMiss') notify('届きませんでした。位置を合わせて再提出');
       }
       syncPhase(); updateHud();

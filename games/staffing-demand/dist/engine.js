@@ -32,7 +32,7 @@
       documentPoints: Object.freeze(['業務が集中する時間帯', '担当業務と配置状況', '増員が必要な理由']),
       attackHint: '予告された列を避け、弾が通り過ぎた隙に資料を取りましょう。',
       agreement: '増員の必要性を確認しました。次に費用と効果を検討します。',
-      agreementTitle: '必要性を確認', documentX: 350, windowX: 240
+      agreementTitle: '必要性を確認', papers: ['日勤の回答', '夜勤の回答', '応援記録', '残業集計'], windowX: 240
     }),
     Object.freeze({
       title: '費用と効果', shortTitle: '費用・効果',
@@ -42,7 +42,7 @@
       documentPoints: Object.freeze(['増員に必要な費用', '期待する業務改善', '効果を確かめる方法']),
       attackHint: '狙われた位置を確認してから横へ移動。発射後の弾は追尾しません。',
       agreement: '費用と効果を確認しました。予算調整と実施計画を進めましょう。',
-      agreementTitle: '費用・効果を確認', documentX: 125, windowX: 160
+      agreementTitle: '費用・効果を確認', papers: ['人件費試算', '残業実績', '応援実績', '改善見込み'], windowX: 160
     }),
     Object.freeze({
       title: '実施計画', shortTitle: '実施計画',
@@ -52,7 +52,7 @@
       documentPoints: Object.freeze(['採用と配置の進め方', '受入れ・育成の準備', '実施後の確認方法']),
       attackHint: '左右交互の予告を見て、弾が通り過ぎてから次の側へ移動しましょう。',
       agreement: '必要性と実施条件を確認しました。人員増の要求を採択します。',
-      agreementTitle: '人員増の要求を採択', documentX: 350, windowX: 320
+      agreementTitle: '人員増の要求を採択', papers: ['採用日程', '配置計画', '育成計画', '評価日程'], windowX: 320
     })
   ]);
 
@@ -60,7 +60,7 @@
     move: Object.freeze({ id: 'move', title: 'まずは前後左右に移動',
       body: 'スマホは下のパッドを上下左右にスライド。上で前進、下で後退し、指を離すと止まります。PCは矢印キーかWASD。ショットは自動です。' }),
     document: Object.freeze({ id: 'document', title: '根拠資料を集めよう',
-      body: '下側に資料が現れました。弾が通り過ぎた隙に、紙飛行機を資料に重ねましょう。資料は取るまで消えません。' }),
+      body: '白い資料が前後左右に散らばっています。回収する順番は自由です。弾が通り過ぎた隙に、紙飛行機で全部集めましょう。' }),
     barrier: Object.freeze({ id: 'barrier', title: '資料で反論が弱まった',
       body: '根拠がそろい、反論の壁にショットが届くようになりました。弾を避けながら、自動ショットで壁を崩しましょう。' }),
     submit: Object.freeze({ id: 'submit', title: '位置を合わせて、要求書を提出',
@@ -76,8 +76,35 @@
   ]);
   const minuteQuestions = ['いつから配置しますか？', '誰が受け入れを担当しますか？', '何人を配置しますか？'];
 
+  // Each column gets one paper. Shuffled depths and small offsets keep the whole
+  // set reachable, visibly separated, and different on each negotiation.
+  const paperLayouts = {
+    easy:   { xs: [152, 328], ys: [415, 510], jitter: 12 },
+    normal: { xs: [90, 240, 390], ys: [326, 423, 517], jitter: 16 },
+    hard:   { xs: [55, 180, 300, 425], ys: [278, 365, 448, 530], jitter: 16 }
+  };
+  function makeEvidence(stage, difficulty, random) {
+    const {xs, ys, jitter} = paperLayouts[difficulty];
+    const depths = ys.slice();
+    for (let i = depths.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [depths[i], depths[j]] = [depths[j], depths[i]];
+    }
+    const offset = () => Math.round((random() * 2 - 1) * jitter);
+    const items = xs.map((x, i) => ({
+      x: x + offset(), y: depths[i] + offset(), label: STAGES[stage].papers[i], collected: false
+    }));
+    return {items, count: 0, visible: false, get collected() { return this.count === items.length; }};
+  }
+
+  const finalPatterns = ['答弁の壁', '追及のはさみ撃ち', '理事総動員'];
+  const finalSettings = {
+    easy:   { rows: 9,  interval: .34, speed: 187, gap: 79, pitch: 33, travel: 135, warning: 1.25 },
+    normal: { rows: 13, interval: .23, speed: 232, gap: 59, pitch: 26, travel: 162, warning: 1.0 },
+    hard:   { rows: 17, interval: .17, speed: 286, gap: 44, pitch: 21, travel: 182, warning: .85 }
+  };
   const activePhases = new Set(['collect', 'break', 'questions', 'submit', 'submission']);
-  const combatPhases = new Set(['collect', 'break', 'questions']);
+  const combatPhases = new Set(['collect', 'break']);
   const laneXs = [48, 144, 240, 336, 432];
   const lanePatterns = [[0, 2, 4], [1, 3], [0, 1, 3, 4], [0, 2, 4], [1, 2, 3]];
   // Gap coordinates are in player-lane space. Every row travels straight down.
@@ -120,6 +147,7 @@
       this._difficulty = Object.prototype.hasOwnProperty.call(DIFFICULTIES, options.difficulty)
         ? options.difficulty : 'normal';
       this._tutorial = options.tutorial !== false;
+      this._layoutRandom = options.random || Math.random;
       this._events = [];
       this._started = false;
       this.state = this._newState();
@@ -131,7 +159,7 @@
         difficulty: this._difficulty, tutorial: this._tutorial, guide: null,
         player: { x: CONFIG.width / 2, y: CONFIG.playerY, r: CONFIG.playerRadius },
         bullets: [], shots: [], telegraphs: [], demand: null,
-        document: { x: STAGES[0].documentX, y: CONFIG.playerY, visible: false, collected: false },
+        document: makeEvidence(0, this._difficulty, this._layoutRandom),
         barrier: makeBarrier(this._difficulty, 0),
         window: { x: STAGES[0].windowX, y: CONFIG.windowY, width: CONFIG.windowWidth },
         hits: 0, elapsed: 0, stageElapsed: 0, stageHits: [0, 0, 0], stageTimes: [0, 0, 0],
@@ -168,7 +196,8 @@
       s.shots = [];
       s.telegraphs = [];
       s.demand = null;
-      s.document = { x: stage.documentX, y: CONFIG.playerY, visible: false, collected: false };
+      if (s.stage > 0) s.document = makeEvidence(s.stage, s.difficulty, this._layoutRandom);
+      this._finalWave = null;
       s.barrier = makeBarrier(s.difficulty, s.stage);
       s.window = { x: stage.windowX, y: CONFIG.windowY, width: CONFIG.windowWidth };
       s.invulnerable = 0;
@@ -243,9 +272,7 @@
         s.phase = 'collect';
       } else if (s.phase === 'minutes') {
         s.phase = 'questions';
-        this._cycleIndex = 0;
-        this._attackAge = 0;
-        this._beginAttackCycle();
+        this._startFinalWave(0);
       } else return false;
       return true;
     }
@@ -322,15 +349,7 @@
       }
       if (s.phase === 'submit') return;
       if (s.phase === 'questions') {
-        this._updateAttack(dt);
-        this._moveBullets(dt);
-        if (this._cycleIndex === 2 && this._attack.nextBurst === this._attack.burstCount && !s.bullets.length) {
-          s.phase = 'submit';
-          s.cue = '';
-          s.telegraphs = [];
-          s.attackPhase = 'rest';
-          this._emit('minutesRecorded');
-        }
+        this._updateFinale(dt);
         return;
       }
 
@@ -344,9 +363,16 @@
       else this._updateAttack(dt);
       this._moveBullets(dt);
 
-      if (s.document.visible && !s.document.collected &&
-          Math.hypot(s.player.x - s.document.x, s.player.y - s.document.y) <= CONFIG.documentPickupRadius) {
-        s.document.collected = true;
+      if (s.document.visible) {
+        for (const item of s.document.items) {
+          if (!item.collected && Math.hypot(player.x - item.x, player.y - item.y) <= CONFIG.documentPickupRadius) {
+            item.collected = true;
+            s.document.count++;
+            this._emit('docCollected', { label: item.label, count: s.document.count, total: s.document.items.length });
+          }
+        }
+      }
+      if (s.document.visible && s.document.collected) {
         s.document.visible = false;
         s.barrier.weak = true;
         s.phase = 'break';
@@ -355,7 +381,6 @@
           s.telegraphs = [];
           s.attackPhase = s.bullets.length ? 'firing' : 'rest';
         }
-        this._emit('docCollected');
         if (this._showGuide('barrier', 'break')) return;
       }
 
@@ -395,6 +420,67 @@
         s.cue = '';
         this._emit('barrierBroken');
         this._showGuide('submit', 'submit');
+      }
+    }
+
+    _startFinalWave(index) {
+      const s = this.state, spec = finalSettings[s.difficulty];
+      const start = clamp(s.player.x, 54, CONFIG.width - 54);
+      const direction = start < CONFIG.width / 2 ? 1 : -1;
+      // A sweep, a narrowing return, then two reversals in the last curtain.
+      const turns = [[0, 1], [0, 1, .26], [0, 1, .08, .92]][index];
+      const rows = spec.rows + index * 4;
+      const gaps = Array.from({length: rows}, (_, i) => {
+        const t = i * (turns.length - 1) / (rows - 1);
+        const k = Math.min(Math.floor(t), turns.length - 2);
+        return start + direction * spec.travel * (turns[k] + (turns[k + 1] - turns[k]) * (t - k));
+      });
+      this._finalWave = {index, gaps, row: 0, until: spec.warning};
+      s.attackCycle = index;
+      s.cue = minuteQuestions[index];
+      s.attackPhase = 'warning';
+    }
+
+    _updateFinale(dt) {
+      const s = this.state, wave = this._finalWave, spec = finalSettings[s.difficulty];
+      wave.until -= dt;
+      s.telegraphs = [];
+      if (wave.row < wave.gaps.length) {
+        const gap = wave.gaps[wave.row];
+        s.attackPhase = 'warning';
+        s.telegraphs = [{ kind: 'corridor', gapX: gap, radius: spec.gap,
+          nextX: wave.gaps[Math.min(wave.row + 1, wave.gaps.length - 1)],
+          remaining: Math.max(0, wave.until), total: wave.row === 0 ? spec.warning : spec.interval }];
+        if (wave.until <= 0) {
+          // The flanks converge in wave 2. Even at the bottom the announced gap stays open.
+          const drift = wave.index === 1 ? 21 : 0;
+          const margin = spec.gap + drift * (CONFIG.height - CONFIG.bulletSpawnY) / spec.speed;
+          for (const side of [-1, 1]) {
+            for (let x = gap + side * margin; x >= -8 && x <= CONFIG.width + 8; x += side * spec.pitch) {
+              s.bullets.push({ x, y: CONFIG.bulletSpawnY, r: 6, vx: -side * drift, vy: spec.speed, kind: 'finale' });
+            }
+            // An entering diagonal starts at the edge on each row as well.
+            if (drift && (side < 0 ? gap - margin > 32 : gap + margin < CONFIG.width - 32)) {
+              s.bullets.push({ x: side < 0 ? 6 : CONFIG.width - 6, y: CONFIG.bulletSpawnY,
+                r: 6, vx: 0, vy: spec.speed, kind: 'finale' });
+            }
+          }
+          wave.row++;
+          wave.until += spec.interval;
+        }
+      } else {
+        s.attackPhase = 'firing';
+      }
+      this._moveBullets(dt);
+      if (wave.row < wave.gaps.length || s.bullets.length) return;
+      if (wave.index < finalPatterns.length - 1) {
+        this._startFinalWave(wave.index + 1);
+      } else {
+        s.phase = 'submit';
+        s.cue = '';
+        s.telegraphs = [];
+        s.attackPhase = 'rest';
+        this._emit('minutesRecorded');
       }
     }
 
@@ -450,7 +536,6 @@
       };
       const openingQuestion = s.stage === 0 && this._cycleIndex === 0;
       const transfer = s.stage === 1 && this._cycleIndex < 2;
-      const minutes = s.phase === 'questions';
       const index = this._cycleIndex;
       s.cue = '';
       if (openingQuestion) {
@@ -465,14 +550,6 @@
         cycle.burstCount = 1;
         if (index === 0) cycle.duration = difficulty.warningTime + 0.38;
         s.cue = index === 0 ? '応援を出す病棟に負担が集中' : '応援元と応援先が交代';
-      } else if (minutes) {
-        s.cue = minuteQuestions[index];
-        cycle.kind = index === 1 ? 'aim' : 'lanes';
-        cycle.burstCount = 1;
-        if (index === 0) cycle.lanes = [64, 152, 240, 328, 416];
-        else if (index === 1) cycle.targets = [cycle.targetX - 48, cycle.targetX, cycle.targetX + 48];
-        else cycle.lanes = [32, 62, 92, 176, 206, 236, 320, 350, 380];
-        cycle.duration = difficulty.warningTime + 600 / difficulty.bulletSpeed + 0.3;
       } else if (cycle.kind === 'lanes') {
         if (s.difficulty === 'easy') {
           cycle.lanes = lanePatterns[this._cycleIndex % lanePatterns.length].map(i => laneXs[i]);
@@ -497,7 +574,7 @@
         cycle.targets = offsets.map(offset => cycle.targetX + offset);
       }
       // A separate, telegraphed aimed reply punishes camping after a hard-mode volley.
-      if (s.difficulty === 'hard' && !minutes && !openingQuestion && !transfer) {
+      if (s.difficulty === 'hard' && !openingQuestion && !transfer) {
         cycle.replyAt = difficulty.warningTime + (difficulty.burstCount - 1) * difficulty.burstInterval + 0.12;
         cycle.duration += 0.95;
       }
@@ -516,7 +593,7 @@
         return;
       }
       if (!this._attack) this._beginAttackCycle();
-      while (this._attackAge >= this._attack.duration && !(s.phase === 'questions' && this._cycleIndex === 2)) {
+      while (this._attackAge >= this._attack.duration) {
         this._attackAge -= this._attack.duration;
         this._cycleIndex += 1;
         this._beginAttackCycle();
@@ -669,7 +746,7 @@
     }
   }
 
-  const api = Object.freeze({ Game, STAGES, DIFFICULTIES, CONFIG });
+  const api = Object.freeze({ Game, STAGES, DIFFICULTIES, CONFIG, finalPatterns });
   root.StaffingEngine = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

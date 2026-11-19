@@ -21,7 +21,8 @@ function until(game, condition, input = {}, maxSeconds = 30) {
 }
 
 function attackTarget(s) {
-  return { targetX: s.document.collected ? s.barrier.targetX : s.document.x };
+  const next = s.document.items.find(item => !item.collected);
+  return next ? {targetX: next.x, targetY: next.y} : {targetX: s.barrier.targetX};
 }
 
 function reachSubmission(game) {
@@ -172,7 +173,7 @@ test('edge injection: overlapping bullets count once during invulnerability', ()
 test('pause freezes state and resuming accepts only newly supplied movement', () => {
   const game = new Game({ tutorial: false });
   game.start();
-  until(game, s => s.phase === 'break', s => ({ targetX: s.document.x }));
+  until(game, s => s.phase === 'break', attackTarget);
   assert.equal(game.pause('テスト中断'), true);
   const frozen = JSON.stringify(game.state);
   runFor(game, 10, { axis: 1 });
@@ -249,12 +250,12 @@ test('each attack pattern at every difficulty has a real bullet-free recovery in
           currentRecovery = 0;
         }
         for (const warning of s.telegraphs) if (warning.side) waveSides.add(warning.side);
-        return { targetX: s.document.x < 240 ? 440 : 30 };
+        return { targetX: CONFIG.playerMargin, targetY: CONFIG.playerBottom };
       });
-      const longestTripToDocument = Math.max(STAGES[stage].documentX - CONFIG.playerMargin,
-        CONFIG.width - CONFIG.playerMargin - STAGES[stage].documentX) / CONFIG.playerSpeed;
-      assert.ok(longestRecovery > longestTripToDocument,
-        `${difficulty}, stage ${stage + 1}: recovery ${longestRecovery} must allow document trip ${longestTripToDocument}`);
+      const nearestTrip = Math.min(...game.state.document.items.map(item =>
+        Math.hypot(item.x - CONFIG.playerMargin, item.y - CONFIG.playerBottom) / CONFIG.playerSpeed));
+      assert.ok(longestRecovery > nearestTrip,
+        `${difficulty}, stage ${stage + 1}: need enough time to fly to the nearest paper`);
       if (stage === 2) assert.deepEqual([...waveSides].sort(), ['left', 'right']);
     }
   }
@@ -344,66 +345,6 @@ test('submissions cannot start during combat, pause or either success screen', (
   submitSuccessfully(game); assert.equal(game.submit(),false);
 });
 
-test('hard v1.2 has a no-damage route through all three stages using only legal inputs', () => {
-  // Deterministic reference run. Each pair is [movement axis, number of 40 ms input frames].
-  const inputRuns = [
-    [1, 10], [0.5, 1], [0, 70], [-1, 22], [0, 39], [1, 5], [0.5, 1], [0, 1], [-1, 3], [0.5, 1],
-    [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [1, 1], [-0.5, 2], [0, 13], [-1, 1], [0, 1], [0.5, 2],
-    [0, 8], [1, 22], [0.5, 1], [0, 10], [-0.5, 1], [-1, 18], [0, 2], [1, 3], [-0.5, 2], [1, 3],
-    [0.5, 1], [-1, 1], [0, 1], [1, 3], [-0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [-0.5, 1],
-    [0, 1], [1, 3], [-0.5, 1], [0, 1], [0.5, 1], [1, 6], [0, 50], [-1, 5], [-0.5, 1], [-1, 4],
-    [1, 1], [0, 1], [-0.5, 1], [0, 1], [1, 3], [-0.5, 2], [1, 3], [0.5, 1], [-1, 1], [0.5, 1],
-    [1, 2], [0.5, 1], [0, 1], [-0.5, 1], [1, 3], [0, 1], [-0.5, 1], [-1, 13], [-0.5, 1], [0, 42],
-    [-1, 5], [-0.5, 1], [0, 1], [1, 3], [-0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [-1, 1],
-    [0.5, 2], [0, 13], [1, 1], [0, 1], [-0.5, 2], [0, 1], [1, 2], [0, 22], [-1, 11], [0, 28],
-    [0.5, 1], [1, 13], [0.5, 1], [0, 1], [-0.5, 1], [-1, 13], [-0.5, 1], [0, 11], [1, 21], [0.5, 1],
-    [0, 22], [-1, 3], [-0.5, 1], [1, 3], [0, 2], [0.5, 1], [0, 7], [0.5, 1], [-0.5, 1], [0.5, 1],
-    [1, 2], [0.5, 1], [-1, 3], [0, 9], [-0.5, 2], [0.5, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [1, 3],
-    [0.5, 1], [0, 6], [-1, 20], [-0.5, 1], [0, 23], [0.5, 1], [1, 2], [0, 1], [-1, 2], [-0.5, 1],
-    [0, 9], [-1, 1], [0, 1], [0.5, 1], [-1, 3], [0, 1], [1, 3], [-0.5, 1], [0, 1], [1, 1],
-    [0, 9], [0.5, 1], [1, 2], [0, 1], [-1, 2], [-0.5, 1], [0, 6], [1, 15], [0, 41], [-1, 1],
-    [-0.5, 1], [0.5, 1], [-1, 3], [0, 1], [0.5, 1], [-1, 3], [0, 1], [1, 3], [-0.5, 1], [0.5, 1],
-    [1, 2], [0.5, 1], [-0.5, 1], [0.5, 1], [1, 1], [0, 20], [-1, 12], [-0.5, 1], [0, 21], [1, 10],
-    [0.5, 1], [0, 70], [-1, 4], [0, 1], [-0.5, 2], [1, 1], [0, 1], [-0.5, 2], [1, 1], [0, 1],
-    [-0.5, 2], [1, 1], [0, 1], [-0.5, 2], [1, 1], [0, 1], [-0.5, 1], [-1, 18], [-0.5, 1], [0, 7],
-    [0.5, 1], [1, 19], [0, 1], [-1, 3], [0.5, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2],
-    [-0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 2],
-    [0.5, 1], [0, 1], [1, 3], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-0.5, 1], [-1, 2], [0, 1],
-    [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 11], [-0.5, 1], [0, 31],
-    [1, 9], [0, 1], [-1, 3], [0.5, 1], [-1, 3], [0, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1],
-    [1, 3], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [-0.5, 1], [1, 3],
-    [0, 1], [-1, 1], [1, 2], [-0.5, 1], [0, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 2], [-0.5, 1],
-    [0, 1], [-1, 3], [0.5, 1], [1, 20], [0.5, 1], [0, 15], [-0.5, 1], [-1, 15], [0, 1], [1, 3],
-    [-0.5, 1], [0.5, 1], [1, 2], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [-0.5, 1], [-1, 2],
-    [-0.5, 1], [0, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 3], [0.5, 1],
-    [1, 2], [0.5, 1], [0, 1], [0.5, 1], [1, 2], [0, 1], [0.5, 1], [1, 2], [0, 1], [0.5, 1],
-    [1, 2], [0.5, 1], [0, 1], [1, 7], [0.5, 1], [0, 35], [-1, 9], [0, 1], [1, 2], [-1, 2],
-    [-0.5, 1], [1, 2], [0.5, 1], [0, 1], [1, 3], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-0.5, 1],
-    [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [0.5, 1],
-    [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 3],
-    [-0.5, 1], [-1, 14], [0, 29], [1, 9], [0, 1], [-1, 3], [0.5, 1], [-0.5, 1], [-1, 2], [0, 1],
-    [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1],
-    [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 3], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-0.5, 1],
-    [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 1],
-    [0, 34], [1, 13], [0.5, 1], [0, 34], [-0.5, 1], [-1, 1], [0, 1], [0.5, 1], [1, 1], [0, 72],
-    [-0.5, 1], [-1, 2], [0, 1], [0.5, 1], [1, 2], [0, 71], [-1, 2], [0, 1], [0.5, 1], [1, 1],
-    [0.5, 1], [0, 28],
-  ];
-  const game = new Game({difficulty:'hard', tutorial:false});
-  game.start();
-  for (const [axis, count] of inputRuns) {
-    for (let frame = 0; frame < count; frame++) {
-      const s = game.state;
-      if (s.phase === 'stageClear') game.advanceStage();
-      if (s.phase === 'caucus' || s.phase === 'minutes') game.continueNegotiation();
-      if (s.phase === 'submit' && Math.abs(s.window.x - s.player.x) < 10) game.submit();
-      game.step(.04, {axis});
-    }
-  }
-  assert.equal(game.getResults().completed, true);
-  assert.deepEqual(game.state.stageHits, [0, 0, 0]);
-});
-
 test('hard corridor ammunition is confined to combat and leaves an accessible gap', () => {
   const game = new Game({difficulty:'hard', tutorial:false});
   game.start();
@@ -491,7 +432,7 @@ test('minutes freeze hazards, then require exactly three warned waves before sub
     if (s.telegraphs[0]) questions.set(s.cue, s.telegraphs[0].kind);
     return {axis:0};
   });
-  assert.deepEqual([...questions.values()], ['lanes','aim','lanes']);
+  assert.deepEqual([...questions.values()], ['corridor','corridor','corridor']);
   assert.deepEqual([...questions.keys()].map(q => q.slice(0,2)), ['いつ','誰が','何人']);
   assert.equal(s.bullets.length,0); assert.equal(s.telegraphs.length,0);
   assert.equal(game.continueNegotiation(),false);
@@ -518,11 +459,11 @@ test('free flight shares a speed cap on both axes, including diagonals and touch
 test('picking up evidence requires contact in both dimensions', () => {
   const g = new Game({tutorial:false}); g.start();
   const s = g.state;
-  const x=s.document.x;
+  const {x,y}=s.document.items[0];
   runFor(g,4,{targetX:x,targetY:CONFIG.playerTop});
   assert.equal(s.document.visible,true); assert.equal(s.document.collected,false);
-  until(g,s=>s.document.collected,{targetX:x,targetY:s.document.y});
-  assert.ok(Math.hypot(s.player.x-x,s.player.y-s.document.y) <= CONFIG.documentPickupRadius);
+  until(g,s=>s.document.count === 1,{targetX:x,targetY:y});
+  assert.ok(Math.hypot(s.player.x-x,s.player.y-y) <= CONFIG.documentPickupRadius);
 });
 
 test('aim warnings and bullets retain both coordinates of the original lock', () => {
@@ -551,4 +492,77 @@ test('shots, enemy hits and the submitted paper use the current flight position'
     s=>({targetX:s.window.x,targetY:CONFIG.playerTop}));
   assert.equal(g.submit(),true); assert.equal(s.demand.y,CONFIG.playerTop-24);
   until(g,s=>s.phase==='stageClear');
+});
+
+test('all papers are separated, reachable, persistent, and unlock the barrier only as a set', () => {
+  for (const [difficulty,total] of [['easy',2],['normal',3],['hard',4]]) {
+    for (const roll of [.01,.5,.99]) {
+      const g = new Game({difficulty, tutorial:false, random:() => roll}); g.start();
+      for (let stage = 0; stage < 3; stage++) {
+        if (g.state.phase === 'caucus') g.continueNegotiation();
+        const {document: pack,barrier} = g.state;
+        assert.equal(pack.items.length,total);
+        until(g,s => s.document.visible);
+        assert.equal(barrier.weak,false);
+        for (const [i,item] of pack.items.entries()) {
+          assert.ok(item.x >= CONFIG.playerMargin && item.x <= CONFIG.width - CONFIG.playerMargin);
+          assert.ok(item.y >= CONFIG.playerTop && item.y <= CONFIG.playerBottom);
+          assert.ok(item.label);
+          for (const other of pack.items.slice(i+1)) {
+            assert.ok(Math.hypot(item.x-other.x,item.y-other.y) > 85);
+          }
+        }
+        const depths = pack.items.map(p => p.y);
+        assert.ok(Math.max(...depths) - Math.min(...depths) >= [0,0,90,175,220][total]);
+        const last = pack.items.findLast(item => !item.collected);
+        until(g,() => last.collected,{targetX:last.x,targetY:last.y});
+        assert.ok(pack.count < total); assert.equal(barrier.weak,false);
+        const before = pack.count;
+        runFor(g,1); assert.equal(pack.count,before);
+        reachSubmission(g);
+        const collected=g.drainEvents().filter(e => e.type === 'docCollected' && e.stage === stage);
+        assert.deepEqual(collected.map(e=>e.count),Array.from({length:total},(_,i)=>i+1));
+        assert.equal(barrier.weak,true);
+        if (stage < 2) {submitSuccessfully(g);g.advanceStage();}
+      }
+    }
+  }
+});
+
+test('replaying a stage can change paper positions', () => {
+  let roll = .05;
+  const g = new Game({tutorial:false, random:() => roll});
+  g.start(); const first = g.state.document.items;
+  roll=.95; g.start();
+  assert.notDeepEqual(g.state.document.items,first);
+});
+
+test('every final curtain has a survivable route, and harder settings put more bullets on screen', () => {
+  const peakCounts=[];
+  for (const difficulty of ['easy','normal','hard']) {
+    const g=new Game({difficulty,tutorial:false,random:() => .5}); g.start(); enterStage(g,2);
+    until(g,s=>s.phase === 'minutes',attackTarget,60);
+    g.continueNegotiation();
+    const s=g.state, hits=s.hits, targets=[], waves=new Set();
+    let peak=0, lastRow;
+    until(g,s=>s.phase === 'submit',s=>{
+      const warning=s.telegraphs[0];
+      if (warning && s.bullets.some(b=>b.kind === 'finale')) {
+        peak=Math.max(peak,s.bullets.length); waves.add(s.attackCycle);
+      }
+      // Remember the safe spot shown at the muzzle and meet that row at the plane.
+      if (warning && (lastRow !== warning.gapX || !targets.length)) {
+        const speed = {easy:187,normal:232,hard:286}[difficulty];
+        targets.push({at:s.elapsed+warning.remaining+(s.player.y-CONFIG.bulletSpawnY)/speed,x:warning.gapX});
+        lastRow=warning.gapX;
+      }
+      while(targets.length>1 && targets[1].at<s.elapsed+.08) targets.shift();
+      return targets.length?{targetX:targets[0].x}:{};
+    },40);
+    assert.equal(s.hits,hits,`${difficulty} has a no-damage final route`);
+    assert.equal(waves.size,3); assert.ok(peak>20);
+    assert.equal(s.attempts,2);
+    peakCounts.push(peak);
+  }
+  assert.ok(peakCounts[0] < peakCounts[1] && peakCounts[1] < peakCounts[2]);
 });
