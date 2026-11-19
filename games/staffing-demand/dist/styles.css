@@ -132,3 +132,13 @@ dialog::backdrop { background:#090e20bf; }.dialog-body,.adoption-body { padding:
 }
 @media (max-width:370px) { .brand{font-size:13px}.brand svg{width:22px}.bar-inner{padding-inline:7px;gap:5px}.quiet-button{padding:6px}.difficulty-choice span{font-size:12px}.cover-lead{font-size:12px}.hud-right{gap:5px}.mobile-context p{font-size:12px} }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after{animation:none!important;transition:none!important;} }
+
+.negotiation-lines { margin: 16px 0; display: grid; gap: 10px; }
+.negotiation-lines p { display: grid; grid-template-columns: 4em 1fr; gap: 8px; font-size: 15px; line-height: 1.55; }
+.negotiation-lines strong { color: var(--mint); }
+.negotiation-lines p:first-child strong { color: var(--amber); }
+.director-quote .hit-line, .mobile-context .hit-line { color: #ffb8a4; font-weight: 700; }
+@media (max-width:680px) {
+  .mobile-context p { min-height: 2.9em; }
+  .play-column { width:min(480px,calc((100dvh - 262px)*.8),calc(100vw - 16px)); }
+}

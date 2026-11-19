@@ -119,7 +119,7 @@
     ctx.drawImage(roomCache[stage], 0, 0);
   }
 
-  function drawDirector(ctx) {
+  function drawDirector(ctx, closed) {
     ctx.save();
 
     rounded(ctx, 202, 10, 76, 91, 18);
@@ -182,10 +182,10 @@
     ctx.lineCap = "round";
     strokeLine(ctx, 213, 79, 226, 93, C.suit, 11);
     strokeLine(ctx, 267, 79, 255, 93, C.suit, 11);
-    rounded(ctx, 226, 82, 29, 20, 2);
+    rounded(ctx, 226, closed ? 89 : 82, 29, closed ? 6 : 20, 2);
     ctx.fillStyle = C.paper;
     ctx.fill();
-    strokeLine(ctx, 231, 88, 249, 88, "#bdcec7", 1.5);
+    if (!closed) strokeLine(ctx, 231, 88, 249, 88, "#bdcec7", 1.5);
     strokeLine(ctx, 231, 93, 247, 93, "#bdcec7", 1.5);
     circle(ctx, 226, 93, 4.5, C.skin);
     circle(ctx, 255, 93, 4.5, C.skin);
@@ -536,7 +536,15 @@
     ctx.clearRect(0, 0, W, H);
     drawRoom(ctx, s.stage || 0);
     drawTelegraphs(ctx, s.telegraphs);
-    drawDirector(ctx);
+    if (s.stage === 0 && s.document.collected) {
+      for (const [x, unit, answer] of [[14, '病棟・夜勤', '休憩に入れず'], [348, '外来・日勤', '応援を要請']]) {
+        ctx.fillStyle = '#dedecd'; ctx.fillRect(x, 40, 118, 48);
+        ctx.fillStyle = '#68c5ad'; ctx.fillRect(x, 40, 4, 48);
+        label(ctx, unit, x + 59, 54, 13, '#28463e');
+        label(ctx, answer, x + 59, 73, 15, '#182b35');
+      }
+    }
+    drawDirector(ctx, phase === 'minutes');
     drawWindow(ctx, s.window, submitActive, completed);
     drawBarrier(ctx, barrier);
     drawWeakPoint(ctx, barrier);

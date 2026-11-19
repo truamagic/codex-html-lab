@@ -26,9 +26,9 @@
   const STAGES = Object.freeze([
     Object.freeze({
       title: '増員の必要性', shortTitle: '必要性',
-      objection: 'どの時間帯で、どの業務の人員が不足していますか。',
-      documentTitle: '業務量・配置資料',
-      documentSummary: '時間帯ごとの業務量と配置状況を整理した資料。',
+      objection: 'それは一部の職員の声では？',
+      documentTitle: '職場アンケート',
+      documentSummary: '病棟と外来が持ち寄った、日勤・夜勤の応援記録と回答。',
       documentPoints: Object.freeze(['業務が集中する時間帯', '担当業務と配置状況', '増員が必要な理由']),
       attackHint: '予告された列を避け、弾が通り過ぎた隙に資料を取りましょう。',
       agreement: '増員の必要性を確認しました。次に費用と効果を検討します。',
@@ -36,7 +36,7 @@
     }),
     Object.freeze({
       title: '費用と効果', shortTitle: '費用・効果',
-      objection: '増員に必要な費用と、見込まれる効果を示してください。',
+      objection: 'では、期間限定の応援配置でどうでしょう。',
       documentTitle: '費用・効果資料',
       documentSummary: '増員に伴う費用と、見込まれる業務改善を整理した資料。',
       documentPoints: Object.freeze(['増員に必要な費用', '期待する業務改善', '効果を確かめる方法']),
@@ -67,8 +67,17 @@
       body: '提出窓の真下に移動し、提出ボタンかSpaceを押しましょう。外しても資料と突破の成果は残り、提出だけ再挑戦できます。' })
   });
 
-  const activePhases = new Set(['collect', 'break', 'submit', 'submission']);
-  const combatPhases = new Set(['collect', 'break']);
+  const HIT_LINES = Object.freeze([
+    '何を言いたいのですか？', '根拠はありますか？',
+    'その数字、いつのものです？', '「みんな」とは、何人です？',
+    'それ、議事録に残しますよ？', '前回もそうおっしゃいましたね。',
+    'その「少し」は何人分です？', 'で、予算はどこから？',
+    'その資料、何ページです？', '今のは質問ですか、要望ですか？'
+  ]);
+  const minuteQuestions = ['いつから配置しますか？', '誰が受け入れを担当しますか？', '何人を配置しますか？'];
+
+  const activePhases = new Set(['collect', 'break', 'questions', 'submit', 'submission']);
+  const combatPhases = new Set(['collect', 'break', 'questions']);
   const laneXs = [48, 144, 240, 336, 432];
   const lanePatterns = [[0, 2, 4], [1, 3], [0, 1, 3, 4], [0, 2, 4], [1, 2, 3]];
   // Gap coordinates are in player-lane space. Every row travels straight down.
@@ -136,6 +145,8 @@
       this._events = [];
       this._started = true;
       this._guideSeen = new Set();
+      this._hitDeck = [];
+      this._lastHitLine = null;
       this._guideResumePhase = null;
       this._beginStage();
       this._emit('started');
@@ -146,7 +157,10 @@
     _beginStage() {
       const s = this.state;
       const stage = STAGES[s.stage];
-      s.phase = 'collect';
+      s.phase = s.stage === 1 ? 'caucus' : 'collect';
+      s.hitLine = '';
+      s.hitLineUntil = 0;
+      s.cue = '';
       s.guide = null;
       s.stageElapsed = 0;
       s.player = { x: CONFIG.width / 2, y: CONFIG.playerY, r: CONFIG.playerRadius };
@@ -161,7 +175,7 @@
       s.attackPhase = 'rest';
       s.attackCycle = 0;
       this._shotClock = 0;
-      this._attackAge = -CONFIG.initialAttackDelay;
+      this._attackAge = s.stage === 1 ? -0.15 : -CONFIG.initialAttackDelay;
       this._cycleIndex = 0;
       this._attack = null;
       this._corridor = null;
@@ -222,6 +236,35 @@
       return true;
     }
 
+    continueNegotiation() {
+      const s = this.state;
+      if (!this._started || s.paused) return false;
+      if (s.phase === 'caucus') {
+        s.phase = 'collect';
+      } else if (s.phase === 'minutes') {
+        s.phase = 'questions';
+        this._cycleIndex = 0;
+        this._attackAge = 0;
+        this._beginAttackCycle();
+      } else return false;
+      return true;
+    }
+
+    _nextHitLine() {
+      if (this._hitDeck.length === 0) {
+        const deck = HIT_LINES.slice();
+        for (let i = deck.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [deck[i], deck[j]] = [deck[j], deck[i]];
+        }
+        const last = deck.length - 1;
+        if (deck[last] === this._lastHitLine) [deck[last], deck[0]] = [deck[0], deck[last]];
+        this._hitDeck = deck;
+      }
+      this._lastHitLine = this._hitDeck.pop();
+      return this._lastHitLine;
+    }
+
     pause(reason) {
       if (!this._started || this.state.phase === 'adopted' || this.state.paused) return false;
       this.state.paused = true;
@@ -255,6 +298,7 @@
       const s = this.state;
       s.elapsed += dt;
       s.stageElapsed += dt;
+      if (s.hitLine && s.elapsed >= s.hitLineUntil) s.hitLine = '';
       s.invulnerable = Math.max(0, s.invulnerable - dt);
       s.barrier.impact = Math.max(0, s.barrier.impact - dt);
 
@@ -273,6 +317,18 @@
         return;
       }
       if (s.phase === 'submit') return;
+      if (s.phase === 'questions') {
+        this._updateAttack(dt);
+        this._moveBullets(dt);
+        if (this._cycleIndex === 2 && this._attack.nextBurst === this._attack.burstCount && !s.bullets.length) {
+          s.phase = 'submit';
+          s.cue = '';
+          s.telegraphs = [];
+          s.attackPhase = 'rest';
+          this._emit('minutesRecorded');
+        }
+        return;
+      }
 
       if (!s.document.visible && !s.document.collected && s.stageElapsed >= CONFIG.documentSpawnAt) {
         s.document.visible = true;
@@ -290,6 +346,7 @@
         s.document.visible = false;
         s.barrier.weak = true;
         s.phase = 'break';
+        s.cue = '';
         if (s.difficulty === 'hard') {
           s.telegraphs = [];
           s.attackPhase = s.bullets.length ? 'firing' : 'rest';
@@ -330,7 +387,8 @@
         s.shots = [];
         s.telegraphs = [];
         s.attackPhase = 'rest';
-        s.phase = 'submit';
+        s.phase = s.stage === 2 ? 'minutes' : 'submit';
+        s.cue = '';
         this._emit('barrierBroken');
         this._showGuide('submit', 'submit');
       }
@@ -382,11 +440,36 @@
       const difficulty = DIFFICULTIES[s.difficulty];
       const cycle = {
         kind: s.stage === 0 ? 'lanes' : s.stage === 1 ? 'aim' : 'wave',
-        nextBurst: 0, targetX: s.player.x,
+        burstCount: difficulty.burstCount, nextBurst: 0, targetX: s.player.x,
         duration: difficulty.warningTime + (difficulty.burstCount - 1) * difficulty.burstInterval +
           600 / difficulty.bulletSpeed + difficulty.restTime
       };
-      if (cycle.kind === 'lanes') {
+      const openingQuestion = s.stage === 0 && this._cycleIndex === 0;
+      const transfer = s.stage === 1 && this._cycleIndex < 2;
+      const minutes = s.phase === 'questions';
+      const index = this._cycleIndex;
+      s.cue = '';
+      if (openingQuestion) {
+        cycle.kind = 'aim';
+        cycle.targets = [cycle.targetX];
+        cycle.burstCount = 3;
+      } else if (transfer) {
+        cycle.kind = 'wave';
+        cycle.side = index === 0 ? 'left' : 'right';
+        const lanes = s.difficulty === 'easy' ? [44, 108, 172, 232, 412] : [32, 68, 104, 140, 176, 212, 248, 410];
+        cycle.lanes = lanes.map(x => index === 0 ? x : CONFIG.width - x);
+        cycle.burstCount = 1;
+        if (index === 0) cycle.duration = difficulty.warningTime + 0.38;
+        s.cue = index === 0 ? '応援を出す病棟に負担が集中' : '応援元と応援先が交代';
+      } else if (minutes) {
+        s.cue = minuteQuestions[index];
+        cycle.kind = index === 1 ? 'aim' : 'lanes';
+        cycle.burstCount = 1;
+        if (index === 0) cycle.lanes = [64, 152, 240, 328, 416];
+        else if (index === 1) cycle.targets = [cycle.targetX - 48, cycle.targetX, cycle.targetX + 48];
+        else cycle.lanes = [32, 62, 92, 176, 206, 236, 320, 350, 380];
+        cycle.duration = difficulty.warningTime + 600 / difficulty.bulletSpeed + 0.3;
+      } else if (cycle.kind === 'lanes') {
         if (s.difficulty === 'easy') {
           cycle.lanes = lanePatterns[this._cycleIndex % lanePatterns.length].map(i => laneXs[i]);
         } else {
@@ -405,12 +488,12 @@
         cycle.lanes = [];
         for (let x = 22; x < end; x += spacing) cycle.lanes.push(cycle.side === 'left' ? x : 480 - x);
       }
-      if (cycle.kind === 'aim') {
+      if (cycle.kind === 'aim' && !cycle.targets) {
         const offsets = s.difficulty === 'hard' ? [0, -96, -48, 48, 96] : s.difficulty === 'normal' ? [0, -56, 56] : [0];
         cycle.targets = offsets.map(offset => cycle.targetX + offset);
       }
       // A separate, telegraphed aimed reply punishes camping after a hard-mode volley.
-      if (s.difficulty === 'hard') {
+      if (s.difficulty === 'hard' && !minutes && !openingQuestion && !transfer) {
         cycle.replyAt = difficulty.warningTime + (difficulty.burstCount - 1) * difficulty.burstInterval + 0.12;
         cycle.duration += 0.95;
       }
@@ -429,13 +512,13 @@
         return;
       }
       if (!this._attack) this._beginAttackCycle();
-      while (this._attackAge >= this._attack.duration) {
+      while (this._attackAge >= this._attack.duration && !(s.phase === 'questions' && this._cycleIndex === 2)) {
         this._attackAge -= this._attack.duration;
         this._cycleIndex += 1;
         this._beginAttackCycle();
       }
       const attack = this._attack;
-      while (attack.nextBurst < difficulty.burstCount &&
+      while (attack.nextBurst < attack.burstCount &&
           this._attackAge + 1e-9 >= difficulty.warningTime + attack.nextBurst * difficulty.burstInterval) {
         this._fireBurst(attack, difficulty);
         attack.nextBurst += 1;
@@ -456,7 +539,7 @@
         s.attackPhase = 'warning';
       } else {
         s.telegraphs = [];
-        s.attackPhase = s.bullets.length > 0 || attack.nextBurst < difficulty.burstCount ? 'firing' : 'rest';
+        s.attackPhase = s.bullets.length > 0 || attack.nextBurst < attack.burstCount ? 'firing' : 'rest';
       }
       if (attack.replyAt !== undefined && this._attackAge >= attack.replyAt && !attack.replyFired) {
         if (attack.replyX === undefined) attack.replyX = s.player.x;
@@ -507,7 +590,9 @@
             s.hits += 1;
             s.stageHits[s.stage] += 1;
             s.invulnerable = CONFIG.invulnerabilitySeconds;
-            this._emit('hit', { hits: s.hits });
+            s.hitLine = this._nextHitLine();
+            s.hitLineUntil = s.elapsed + 2.6;
+            this._emit('hit', { hits: s.hits, line: s.hitLine });
           }
         } else if (bullet.y <= CONFIG.height + 24 && bullet.x >= -32 && bullet.x <= CONFIG.width + 32) {
           remaining.push(bullet);

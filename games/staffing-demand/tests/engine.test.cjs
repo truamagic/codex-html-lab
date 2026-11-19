@@ -25,7 +25,10 @@ function attackTarget(s) {
 }
 
 function reachSubmission(game) {
-  until(game, s => s.phase === 'submit', attackTarget);
+  until(game, s => s.phase === 'submit', s => {
+    if (s.phase === 'caucus' || s.phase === 'minutes') game.continueNegotiation();
+    return attackTarget(s);
+  }, 65);
   assert.equal(game.state.document.collected, true);
   assert.equal(game.state.barrier.hp, 0);
   assert.equal(game.state.bullets.length, 0);
@@ -215,7 +218,8 @@ test('aimed shots retain their locked target after player moves', () => {
   const game = new Game({ tutorial: false });
   game.start();
   enterStage(game, 1);
-  until(game, s => s.telegraphs.length > 0);
+  game.continueNegotiation();
+  until(game, s => s.telegraphs.some(t => t.kind === 'aim'));
   assert.equal(game.state.telegraphs[0].kind, 'aim');
   const targetX = game.state.telegraphs[0].targetX;
   until(game, s => s.bullets.length > 0, { targetX: 440 });
@@ -233,6 +237,7 @@ test('each attack pattern at every difficulty has a real bullet-free recovery in
       const game = new Game({ difficulty, tutorial: false });
       game.start();
       enterStage(game, stage);
+      if (game.state.phase === 'caucus') game.continueNegotiation();
       let currentRecovery = 0;
       let longestRecovery = 0;
       const waveSides = new Set();
@@ -261,7 +266,7 @@ test('difficulty settings alter actual projectile speed and burst count', () => 
   for (const difficulty of Object.keys(DIFFICULTIES)) {
     const game = new Game({ difficulty, tutorial: false });
     game.start();
-    until(game, s => s.bullets.length > 0, { targetX: 30 });
+    until(game, s => s.bullets.some(b => b.kind === 'lanes'), { targetX: 30 });
     speeds.push(game.state.bullets[0].vy);
     runFor(game, 0.65, { targetX: 30 });
     counts.push(game.state.bullets.length);
@@ -325,7 +330,7 @@ test('normal and hard require alignment, and each argument opens the next weak p
 test('hard-mode follow-up telegraphs its lock before firing a non-homing fan', () => {
   const game = new Game({ difficulty:'hard', tutorial:false });
   game.start();
-  until(game, s => s.telegraphs.some(t => t.kind === 'aim'));
+  until(game, s => s.attackCycle > 0 && s.telegraphs.some(t => t.kind === 'aim'));
   const warning = game.state.telegraphs.find(t => t.kind === 'aim');
   assert.ok(warning.remaining > 0.56);
   runFor(game, .62, {targetX:30});
@@ -339,62 +344,50 @@ test('submissions cannot start during combat, pause or either success screen', (
   submitSuccessfully(game); assert.equal(game.submit(),false);
 });
 
-test('hard v1.1 has a no-damage route through all three stages using only legal inputs', () => {
+test('hard v1.2 has a no-damage route through all three stages using only legal inputs', () => {
   // Deterministic reference run. Each pair is [movement axis, number of 40 ms input frames].
   const inputRuns = [
-    [1, 10], [0.5, 1], [0, 55], [-0.5, 1], [-1, 17], [-0.5, 1], [0, 2], [0.5, 1], [-0.5, 1],
-    [0, 2], [0.5, 1], [-0.5, 1], [0, 2], [0.5, 1], [-0.5, 1], [0, 2], [0.5, 1], [-0.5, 1],
-    [0, 2], [1, 13], [-1, 3], [0, 1], [0.5, 1], [1, 5], [-1, 19], [-0.5, 1], [0, 8],
-    [1, 20], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0.5, 1], [0, 1], [-1, 3], [0.5, 2],
-    [-0.5, 1], [-1, 3], [1, 1], [0, 1], [-1, 3], [0, 1], [0.5, 1], [-0.5, 1], [-1, 2],
-    [-0.5, 1], [0.5, 1], [0, 1], [-1, 8], [0, 48], [0.5, 1], [1, 5], [0, 1], [-0.5, 1],
-    [-1, 2], [-0.5, 1], [0.5, 1], [0, 1], [1, 3], [0.5, 1], [-0.5, 1], [0.5, 1], [0, 1],
-    [-1, 3], [0.5, 2], [-1, 3], [0, 3], [-1, 2], [-0.5, 1], [0, 1], [1, 23], [0.5, 1],
-    [0, 28], [-1, 10], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [-0.5, 1], [0, 1], [1, 3],
-    [-0.5, 2], [0.5, 1], [1, 3], [-1, 1], [0, 1], [1, 3], [0, 1], [-0.5, 1], [0.5, 1],
-    [0, 36], [-1, 13], [0, 16], [1, 2], [0, 1], [-0.5, 1], [0.5, 1], [1, 2], [0.5, 1],
-    [0, 1], [-1, 1], [1, 3], [0.5, 1], [-0.5, 1], [0, 1], [1, 3], [-0.5, 2], [1, 3],
-    [0, 3], [1, 2], [0.5, 1], [0, 1], [-1, 14], [0, 42], [0.5, 1], [1, 4], [-1, 2],
-    [-0.5, 1], [0, 21], [-1, 11], [0, 70], [1, 3], [0, 1], [-0.5, 1], [0, 1], [0.5, 1],
-    [0, 1], [-0.5, 1], [0, 1], [0.5, 1], [0, 1], [-0.5, 1], [0, 1], [0.5, 1], [0, 1],
-    [-0.5, 1], [0, 1], [0.5, 1], [0, 1], [-0.5, 1], [0, 1], [0.5, 1], [1, 18], [0.5, 1],
-    [0, 21], [-0.5, 1], [-1, 12], [-0.5, 1], [0.5, 1], [1, 2], [0, 2], [1, 3], [-0.5, 1],
-    [0.5, 1], [1, 3], [-0.5, 1], [0, 1], [1, 3], [-0.5, 1], [0.5, 1], [-1, 3], [0, 2],
-    [-1, 3], [0.5, 1], [0, 1], [-1, 3], [0.5, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0.5, 1],
-    [1, 12], [0.5, 1], [0, 36], [-1, 7], [-0.5, 1], [-1, 2], [-0.5, 1], [1, 1], [0, 2],
-    [1, 2], [0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [-0.5, 1], [0.5, 1], [1, 2],
-    [0.5, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 3], [0.5, 1], [0, 1], [-1, 3],
-    [0.5, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0.5, 1], [-0.5, 1], [-1, 8], [-0.5, 1], [0, 39],
-    [0.5, 1], [1, 7], [-0.5, 1], [-1, 3], [0.5, 1], [0, 1], [-1, 3], [0.5, 1], [0, 1],
-    [-1, 2], [0, 13], [0.5, 1], [1, 1], [0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1],
-    [-1, 1], [1, 3], [0.5, 1], [-1, 1], [1, 8], [0.5, 1], [0, 39], [-0.5, 1], [-1, 7],
-    [0.5, 1], [1, 2], [0.5, 1], [-0.5, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [0.5, 1],
-    [1, 1], [0.5, 1], [0, 13], [-1, 2], [0, 1], [0.5, 1], [-1, 3], [0, 2], [-1, 8],
-    [0, 22], [1, 10], [0.5, 1], [0, 70], [-1, 4], [0, 1], [-0.5, 2], [1, 1], [0, 1],
-    [-0.5, 2], [1, 1], [0, 1], [-0.5, 2], [1, 1], [0, 1], [-0.5, 2], [1, 1], [0, 1],
-    [-0.5, 1], [-1, 18], [-0.5, 1], [0, 7], [0.5, 1], [1, 19], [0, 1], [-1, 3], [0.5, 1],
-    [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [0.5, 1], [1, 2],
-    [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 3],
-    [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2],
-    [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 11], [-0.5, 1], [0, 31], [1, 9],
-    [0, 1], [-1, 3], [0.5, 1], [-1, 3], [0, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1],
-    [1, 3], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [-0.5, 1],
-    [1, 3], [0, 1], [-1, 1], [1, 2], [-0.5, 1], [0, 1], [-1, 2], [-0.5, 1], [0, 1],
-    [-1, 2], [-0.5, 1], [0, 1], [-1, 3], [0.5, 1], [1, 20], [0.5, 1], [0, 15], [-0.5, 1],
-    [-1, 15], [0, 1], [1, 3], [-0.5, 1], [0.5, 1], [1, 2], [0, 1], [0.5, 1], [1, 2],
-    [0.5, 1], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 2], [-0.5, 1], [0, 1],
-    [-1, 2], [-0.5, 1], [0, 1], [-1, 3], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [0.5, 1],
-    [1, 2], [0, 1], [0.5, 1], [1, 2], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1],
-    [1, 7], [0.5, 1], [0, 35], [-1, 9], [0, 1], [1, 2], [-1, 2], [-0.5, 1], [1, 2],
-    [0.5, 1], [0, 1], [1, 3], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-0.5, 1], [-1, 2],
-    [0, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [0.5, 1],
-    [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1],
-    [1, 3], [-0.5, 1], [-1, 14], [0, 29], [1, 9], [0, 1], [-1, 3], [0.5, 1], [-0.5, 1],
-    [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1],
-    [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 3], [-0.5, 1],
-    [-1, 2], [-0.5, 1], [0, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [0, 1],
-    [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 1], [0, 34], [1, 13], [0.5, 1], [0, 21],
-
+    [1, 10], [0.5, 1], [0, 70], [-1, 22], [0, 39], [1, 5], [0.5, 1], [0, 1], [-1, 3], [0.5, 1],
+    [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [1, 1], [-0.5, 2], [0, 13], [-1, 1], [0, 1], [0.5, 2],
+    [0, 8], [1, 22], [0.5, 1], [0, 10], [-0.5, 1], [-1, 18], [0, 2], [1, 3], [-0.5, 2], [1, 3],
+    [0.5, 1], [-1, 1], [0, 1], [1, 3], [-0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [-0.5, 1],
+    [0, 1], [1, 3], [-0.5, 1], [0, 1], [0.5, 1], [1, 6], [0, 50], [-1, 5], [-0.5, 1], [-1, 4],
+    [1, 1], [0, 1], [-0.5, 1], [0, 1], [1, 3], [-0.5, 2], [1, 3], [0.5, 1], [-1, 1], [0.5, 1],
+    [1, 2], [0.5, 1], [0, 1], [-0.5, 1], [1, 3], [0, 1], [-0.5, 1], [-1, 13], [-0.5, 1], [0, 42],
+    [-1, 5], [-0.5, 1], [0, 1], [1, 3], [-0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [-1, 1],
+    [0.5, 2], [0, 13], [1, 1], [0, 1], [-0.5, 2], [0, 1], [1, 2], [0, 22], [-1, 11], [0, 28],
+    [0.5, 1], [1, 13], [0.5, 1], [0, 1], [-0.5, 1], [-1, 13], [-0.5, 1], [0, 11], [1, 21], [0.5, 1],
+    [0, 22], [-1, 3], [-0.5, 1], [1, 3], [0, 2], [0.5, 1], [0, 7], [0.5, 1], [-0.5, 1], [0.5, 1],
+    [1, 2], [0.5, 1], [-1, 3], [0, 9], [-0.5, 2], [0.5, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [1, 3],
+    [0.5, 1], [0, 6], [-1, 20], [-0.5, 1], [0, 23], [0.5, 1], [1, 2], [0, 1], [-1, 2], [-0.5, 1],
+    [0, 9], [-1, 1], [0, 1], [0.5, 1], [-1, 3], [0, 1], [1, 3], [-0.5, 1], [0, 1], [1, 1],
+    [0, 9], [0.5, 1], [1, 2], [0, 1], [-1, 2], [-0.5, 1], [0, 6], [1, 15], [0, 41], [-1, 1],
+    [-0.5, 1], [0.5, 1], [-1, 3], [0, 1], [0.5, 1], [-1, 3], [0, 1], [1, 3], [-0.5, 1], [0.5, 1],
+    [1, 2], [0.5, 1], [-0.5, 1], [0.5, 1], [1, 1], [0, 20], [-1, 12], [-0.5, 1], [0, 21], [1, 10],
+    [0.5, 1], [0, 70], [-1, 4], [0, 1], [-0.5, 2], [1, 1], [0, 1], [-0.5, 2], [1, 1], [0, 1],
+    [-0.5, 2], [1, 1], [0, 1], [-0.5, 2], [1, 1], [0, 1], [-0.5, 1], [-1, 18], [-0.5, 1], [0, 7],
+    [0.5, 1], [1, 19], [0, 1], [-1, 3], [0.5, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2],
+    [-0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 2],
+    [0.5, 1], [0, 1], [1, 3], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-0.5, 1], [-1, 2], [0, 1],
+    [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 11], [-0.5, 1], [0, 31],
+    [1, 9], [0, 1], [-1, 3], [0.5, 1], [-1, 3], [0, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1],
+    [1, 3], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [-0.5, 1], [1, 3],
+    [0, 1], [-1, 1], [1, 2], [-0.5, 1], [0, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 2], [-0.5, 1],
+    [0, 1], [-1, 3], [0.5, 1], [1, 20], [0.5, 1], [0, 15], [-0.5, 1], [-1, 15], [0, 1], [1, 3],
+    [-0.5, 1], [0.5, 1], [1, 2], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [-0.5, 1], [-1, 2],
+    [-0.5, 1], [0, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 3], [0.5, 1],
+    [1, 2], [0.5, 1], [0, 1], [0.5, 1], [1, 2], [0, 1], [0.5, 1], [1, 2], [0, 1], [0.5, 1],
+    [1, 2], [0.5, 1], [0, 1], [1, 7], [0.5, 1], [0, 35], [-1, 9], [0, 1], [1, 2], [-1, 2],
+    [-0.5, 1], [1, 2], [0.5, 1], [0, 1], [1, 3], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-0.5, 1],
+    [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [0.5, 1],
+    [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 3],
+    [-0.5, 1], [-1, 14], [0, 29], [1, 9], [0, 1], [-1, 3], [0.5, 1], [-0.5, 1], [-1, 2], [0, 1],
+    [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [0.5, 1], [1, 2], [0.5, 1], [0, 1], [1, 2], [0.5, 1],
+    [0, 1], [1, 2], [0.5, 1], [0, 1], [1, 3], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-0.5, 1],
+    [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [0, 1], [-0.5, 1], [-1, 2], [-0.5, 1], [0, 1], [-1, 1],
+    [0, 34], [1, 13], [0.5, 1], [0, 34], [-0.5, 1], [-1, 1], [0, 1], [0.5, 1], [1, 1], [0, 72],
+    [-0.5, 1], [-1, 2], [0, 1], [0.5, 1], [1, 2], [0, 71], [-1, 2], [0, 1], [0.5, 1], [1, 1],
+    [0.5, 1], [0, 28],
   ];
   const game = new Game({difficulty:'hard', tutorial:false});
   game.start();
@@ -402,6 +395,7 @@ test('hard v1.1 has a no-damage route through all three stages using only legal 
     for (let frame = 0; frame < count; frame++) {
       const s = game.state;
       if (s.phase === 'stageClear') game.advanceStage();
+      if (s.phase === 'caucus' || s.phase === 'minutes') game.continueNegotiation();
       if (s.phase === 'submit' && Math.abs(s.window.x - s.player.x) < 10) game.submit();
       game.step(.04, {axis});
     }
@@ -424,4 +418,84 @@ test('hard corridor ammunition is confined to combat and leaves an accessible ga
   reachSubmission(game);
   assert.deepEqual(s.bullets, []);
   assert.deepEqual(s.telegraphs, []);
+});
+
+test('actual damage draws ten distinct remarks per deck without a boundary repeat', () => {
+  const game = new Game({tutorial:false});
+  game.start();
+  const lines = [];
+  for (let i = 0; i < 31; i++) {
+    const s = game.state;
+    s.invulnerable = 0;
+    const bullet = {x:s.player.x, y:s.player.y, vx:0, vy:1, r:6};
+    s.bullets.push({...bullet}, {...bullet});
+    game.step(1/60);
+    const hits = game.drainEvents().filter(e => e.type === 'hit');
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].line, s.hitLine);
+    assert.equal(hits[0].hits, i + 1);
+    assert.ok(s.hitLine.length > 0);
+    lines.push(s.hitLine);
+  }
+  for (const start of [0, 10, 20]) {
+    assert.equal(new Set(lines.slice(start, start + 10)).size, 10);
+    assert.notEqual(lines[start + 9], lines[start + 10]);
+  }
+  const last = game.state.hitLine;
+  game.pause(); game.step(4); assert.equal(game.state.hitLine, last);
+  game.resume(); runFor(game, 2.7, {targetX:30}); assert.equal(game.state.hitLine, '');
+  game.start(); assert.equal(game.state.hits, 0); assert.equal(game.state.hitLine, '');
+});
+
+test('first objection fires three shots at the originally telegraphed position', () => {
+  for (const difficulty of Object.keys(DIFFICULTIES)) {
+    const game = new Game({difficulty, tutorial:false});
+    game.start();
+    until(game, s => s.telegraphs.length > 0, {targetX:30});
+    const lock = game.state.telegraphs[0].targetX;
+    assert.equal(game.state.telegraphs[0].kind, 'aim');
+    until(game, s => s.bullets.length === 3, {targetX:300});
+    assert.ok(game.state.bullets.every(b => b.targetX === lock));
+  }
+});
+
+test('the caucus suspends the clock and the two staffing waves exchange sides', () => {
+  for (const difficulty of Object.keys(DIFFICULTIES)) {
+    const game = new Game({difficulty,tutorial:false});
+    game.start(); enterStage(game, 1);
+    const s = game.state, clock = s.elapsed;
+    assert.equal(s.phase, 'caucus');
+    game.step(9); assert.equal(s.elapsed, clock);
+    assert.equal(game.submit(), false);
+    assert.equal(game.continueNegotiation(), true);
+    assert.equal(game.continueNegotiation(), false);
+    until(game, s => s.telegraphs.length);
+    const left = s.telegraphs[0].lanes;
+    assert.ok(left.filter(x => x < CONFIG.width / 2).length > left.filter(x => x > CONFIG.width / 2).length);
+    until(game, s => s.telegraphs.some(t => t.side === 'right'));
+    assert.deepEqual(s.telegraphs[0].lanes, left.map(x => CONFIG.width - x));
+  }
+});
+
+test('minutes freeze hazards, then require exactly three warned waves before submission', () => {
+  const game = new Game({tutorial:false});
+  game.start(); enterStage(game, 2);
+  until(game, s => s.phase === 'minutes', attackTarget, 60);
+  const s = game.state, clock = s.elapsed;
+  game.step(10); assert.equal(s.elapsed,clock); assert.equal(s.bullets.length,0);
+  assert.equal(game.submit(),false);
+  game.continueNegotiation();
+  const questions = new Map();
+  until(game, s => s.phase === 'submit', s => {
+    assert.equal(s.phase, 'questions'); assert.equal(game.submit(),false);
+    if (s.telegraphs[0]) questions.set(s.cue, s.telegraphs[0].kind);
+    return {axis:0};
+  });
+  assert.deepEqual([...questions.values()], ['lanes','aim','lanes']);
+  assert.deepEqual([...questions.keys()].map(q => q.slice(0,2)), ['いつ','誰が','何人']);
+  assert.equal(s.bullets.length,0); assert.equal(s.telegraphs.length,0);
+  assert.equal(game.continueNegotiation(),false);
+  until(game, s => s.player.x < 40, {targetX:30});
+  game.submit(); until(game,s => s.phase === 'submit');
+  assert.equal(game.drainEvents().filter(e => e.type === 'minutesRecorded').length,1);
 });

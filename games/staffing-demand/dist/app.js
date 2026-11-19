@@ -8,7 +8,7 @@
   const { Game, STAGES } = globalThis.StaffingEngine;
   const Art = globalThis.StaffingArt;
   const labels = { easy: 'やさしい', normal: 'ふつう', hard: 'むずかしい' };
-  const phaseLabels = { guide: '操作ガイド', collect: '資料回収', break: '反論突破', submit: '提出待ち', submission: '提出中', stageClear: '合意成立', adopted: '採択' };
+  const phaseLabels = { guide: '操作ガイド', caucus: '団交休憩', minutes: '議事録確認', questions: '最終確認', collect: '資料回収', break: '反論突破', submit: '提出待ち', submission: '提出中', stageClear: '合意成立', adopted: '採択' };
   const feedback = window.ArcadeFeedback;
   const canvas = $('arena'), ctx = canvas.getContext('2d');
   let newBest = false;
@@ -95,6 +95,25 @@
     showDialog('guide', `<div class="dialog-body"><div class="guide-steps" aria-hidden="true">${ids.map((_, i) => `<span class="${i <= index ? 'on' : ''}"></span>`).join('')}</div><p class="dialog-eyebrow">操作ガイド　${index + 1} / 4</p><h2 id="dialogTitle">${esc(g.title)}</h2><p class="dialog-copy">${esc(g.body)}</p><div class="dialog-actions">${button('continueGuide', index === 0 ? '動かしてみる' : 'やってみる', true)}<button class="text-button" type="button" data-action="skipGuide">残りのガイドをスキップ</button></div></div>`);
 
   }
+  function showNegotiation(phase) {
+    const caucus = phase === 'caucus';
+    const lines = caucus ? [
+      ['理事', 'では、期間限定の応援配置でどうでしょう。'],
+      ['病棟委員', '応援は助かります。でも、応援を出した病棟は誰が埋めるんです？'],
+      ['若手', '今日の夜勤に一人来てくれるだけでも助かります。'],
+      ['夜勤担当', 'うん。でも、来月も来てくれるのかな。'],
+      ['委員長', 'よし。応援元の人数と、いつまで続く配置なのか、そこを聞こう。']
+    ] : [
+      ['理事', '前向きに検討します。'],
+      ['書記', '議事録には、いつまでに回答すると書きますか？'],
+      ['理事', '……では、配置の時期と担当者、それから人数を確認しましょう。']
+    ];
+    const dialogue = lines.map(([who, line]) => `<p><strong>${who}</strong><span>${line}</span></p>`).join('');
+    const title = caucus ? '団交をいったん休憩します。' : '理事が書類を閉じた。';
+    const action = caucus ? '交渉の席に戻る' : '議事録を開いて、最終確認へ';
+    showDialog(phase, `<div class="dialog-body"><p class="dialog-eyebrow">${caucus ? '第2段階・応援配置の対案' : '第3段階・閉会……？'}</p><h2 id="dialogTitle">${title}</h2><div class="negotiation-lines">${dialogue}</div><p class="next-stage-note">${caucus ? '応援元と応援先が交代すると、反論の厚い側も入れ替わります。' : '理事がそっと書類を開き直す。「いつ・誰が・何人」の3波を抜けたら提出です。'}</p><div class="dialog-actions">${button('continueNegotiation', action, true)}</div></div>`);
+  }
+
   function showStageClear() {
     const i = game.state.stage, stage = stageData();
     showDialog('stageClear', `<div class="dialog-body"><div class="success-mark" aria-hidden="true">✓</div><p class="dialog-eyebrow">第${i + 1}段階を通過</p><h2 id="dialogTitle">${i === 0 ? '増員の必要性を確認。' : '費用と効果を確認。'}</h2><p class="dialog-copy">${esc(stage.agreement)}</p><p class="next-stage-note">次の確認：${i === 0 ? '増員に必要な費用と、見込まれる効果。' : '採用後の配置と、受入れの計画。'}</p><div class="dialog-actions">${button('advanceStage', `第${i + 2}段階へ進む`, true)}</div></div>`);
@@ -117,6 +136,7 @@
     lastPhase = stamp; submitArmed = false;
     if (s.phase === 'guide') showGuide();
     else if (s.phase === 'stageClear') showStageClear();
+    else if (s.phase === 'caucus' || s.phase === 'minutes') showNegotiation(s.phase);
     else if (s.phase === 'adopted') { $('pauseButton').hidden = true; showAdoption(); }
     else if (modalKind === 'guide' || modalKind === 'stageClear') { closeDialog(); canvas.focus({ preventScroll: true }); }
     updateHud();
@@ -146,20 +166,26 @@
   function updateHud() {
     if (!game) return;
     const s = game.state, stage = stageData();
-    const value = [s.stage,s.phase,s.hits,s.document.collected,s.document.visible,s.barrier.hp,s.paused].join('|');
+    const value = [s.stage,s.phase,s.hits,s.document.collected,s.document.visible,s.barrier.hp,s.paused,s.hitLine,s.cue].join('|');
     if (value === lastHud) return; lastHud = value;
     $('stageCount').textContent = `第${s.stage + 1}段階 / 3`;
     $('stageTitle').textContent = ['必要性を示す','費用と効果を示す','実施計画を示す'][s.stage];
     $('difficultyBadge').textContent = labels[s.difficulty];
     $('hitCount').textContent = s.hits;
-    $('directorLine').textContent = stage.objection;
+    const hasWitness = s.stage === 0 && s.document.collected;
+    const speaker = s.hitLine || !hasWitness ? '理事' : '病棟委員';
+    const remark = s.hitLine || (hasWitness ? '夜勤だけじゃないです。日勤の記録もあります。' : stage.objection);
+    const speech = `${speaker}「${remark}」`;
+    for (const id of ['directorLine', 'mobileDirectorLine']) {
+      const el = $(id);
+      if (el.textContent !== speech) el.textContent = speech;
+      el.classList.toggle('hit-line', Boolean(s.hitLine));
+    }
     $('documentTitle').textContent = stage.documentTitle;
     $('documentSummary').textContent = s.document.collected ? stage.documentPoints.join(' ／ ') : stage.documentSummary;
     const corridor = s.phase === 'break' && s.difficulty === 'hard';
     $('stageTactic').textContent = corridor ? ['弾の列に開いた通路が横へ移ります。紙飛行機をその隙間に入れましょう。','通路が途中で折り返します。先走らず、次の列の隙間を見ましょう。','通路が二度折り返します。金色の弱点から一度離れても、与えたダメージは残ります。'][s.stage] : stage.attackHint;
     $('gameView').dataset.phase = s.phase;
-    const compact = matchMedia('(max-width:680px) and (max-height:650px)').matches;
-    $('mobileDirectorLine').textContent = compact ? ['理事「不足している業務と時間帯は？」','理事「増員の費用と効果を示してください」','理事「採用後の配置と受入れ計画は？」'][s.stage] : `理事「${stage.objection}」`;
     $('mobileDocumentTitle').textContent = stage.documentTitle;
     $('mobileDocumentStatus').textContent = s.document.collected ? '回収済み' : '未回収';
     $('documentStatus').textContent = s.document.collected ? '回収済み' : '未回収';
@@ -172,6 +198,7 @@
     const submitted = ['submit','submission'].includes(s.phase) || (s.phase === 'guide' && s.barrier.hp <= 0);
     $('phaseHint').classList.toggle('ready', submitted);
     $('phaseHint').textContent = submitted ? (s.phase === 'submission' ? '要求書を届けています' : '提出口の真下から提出しよう') : s.document.collected ? (corridor ? '弾の隙間を抜け、弱点を狙おう' : s.difficulty === 'easy' ? '自動ショットで反論を崩そう' : '金色の弱点の真下を狙おう') : s.document.visible ? `${stage.documentTitle}を回収` : '予告を見て、弾をよけよう';
+    if (s.cue) $('phaseHint').textContent = s.cue;
     $('attackHint').textContent = s.phase === 'break' ? stage.documentPoints[s.barrier.section] : '';
     $('attackHint').hidden = s.phase !== 'break';
     const aria = `第${s.stage+1}段階。${phaseLabels[s.phase]}。被弾${s.hits}回。資料${s.document.collected ? '回収済み' : '未回収'}。`;
@@ -190,6 +217,11 @@
     switch (b.dataset.action) {
       case 'continueGuide': closeDialog(); resetInput(); game.continueGuide(); lastPhase = null; syncPhase(); break;
       case 'skipGuide': closeDialog(); resetInput(); game.skipTutorial(); lastPhase = null; syncPhase(); break;
+      case 'continueNegotiation':
+        if (game.continueNegotiation()) {
+          closeDialog(); resetInput(); priorFrame = performance.now(); syncPhase(); canvas.focus({ preventScroll: true });
+        }
+        break;
       case 'advanceStage': closeDialog(); resetInput(); game.advanceStage(); lastPhase = null; syncPhase(); break;
       case 'results': showResults(); break;
       case 'resume': resumeGame(); break;
@@ -260,9 +292,8 @@
         feedback.cue(event.type);
         if (event.type === 'adopted') newBest = feedback.finish(game.getResults());
         if (event.type === 'docCollected') notify('根拠資料を回収！');
-        else if (event.type === 'barrierBroken') notify('反論を突破！ 要求書を提出しよう');
+        else if (event.type === 'minutesRecorded' || (event.type === 'barrierBroken' && event.stage !== 2)) notify('反論を突破！ 要求書を提出しよう');
         else if (event.type === 'submitMiss') notify('届きませんでした。位置を合わせて再提出');
-        else if (event.type === 'hit') notify('被弾　' + game.state.hits + ' 回');
       }
       syncPhase(); updateHud();
       Art.draw(ctx, game.state, reducedMotion ? 0 : artClock);
