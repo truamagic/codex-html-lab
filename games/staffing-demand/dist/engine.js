@@ -3,7 +3,7 @@
 
   const CONFIG = Object.freeze({
     width: 480, height: 600, playerY: 530, playerRadius: 11,
-    playerSpeed: 260, playerMargin: 22,
+    playerSpeed: 260, playerMargin: 22, playerTop: 238, playerBottom: 570,
     shotSpeed: 560, shotInterval: 0.18, shotRadius: 3,
     barrierY: 170,
     bulletRadius: 6, bulletSpawnY: 138,
@@ -57,10 +57,10 @@
   ]);
 
   const GUIDES = Object.freeze({
-    move: Object.freeze({ id: 'move', title: 'まずは左右に移動',
-      body: 'PCは左右キー・A/D、スマホは盤面下の操作帯を左右にスライド。通常ショットは自動で出ます。' }),
+    move: Object.freeze({ id: 'move', title: 'まずは前後左右に移動',
+      body: 'スマホは下のパッドを上下左右にスライド。上で前進、下で後退し、指を離すと止まります。PCは矢印キーかWASD。ショットは自動です。' }),
     document: Object.freeze({ id: 'document', title: '根拠資料を集めよう',
-      body: '下側に資料が現れました。弾が通り過ぎた隙に、横へ移動して触れましょう。資料は取るまで消えません。' }),
+      body: '下側に資料が現れました。弾が通り過ぎた隙に、紙飛行機を資料に重ねましょう。資料は取るまで消えません。' }),
     barrier: Object.freeze({ id: 'barrier', title: '資料で反論が弱まった',
       body: '根拠がそろい、反論の壁にショットが届くようになりました。弾を避けながら、自動ショットで壁を崩しましょう。' }),
     submit: Object.freeze({ id: 'submit', title: '位置を合わせて、要求書を提出',
@@ -302,14 +302,18 @@
       s.invulnerable = Math.max(0, s.invulnerable - dt);
       s.barrier.impact = Math.max(0, s.barrier.impact - dt);
 
-      let displacement = 0;
-      if (typeof input.targetX === 'number' && Number.isFinite(input.targetX)) {
-        displacement = clamp(input.targetX - s.player.x, -CONFIG.playerSpeed * dt, CONFIG.playerSpeed * dt);
-      } else {
-        const axis = Number.isFinite(input.axis) ? clamp(input.axis, -1, 1) : 0;
-        displacement = axis * CONFIG.playerSpeed * dt;
-      }
-      s.player.x = clamp(s.player.x + displacement, CONFIG.playerMargin, CONFIG.width - CONFIG.playerMargin);
+      const limit = CONFIG.playerSpeed * dt;
+      const {player} = s;
+      const dx = Number.isFinite(input.targetX)
+        ? clamp(input.targetX, CONFIG.playerMargin, CONFIG.width - CONFIG.playerMargin) - player.x
+        : (Number.isFinite(input.axis) ? clamp(input.axis, -1, 1) : 0) * limit;
+      const dy = Number.isFinite(input.targetY)
+        ? clamp(input.targetY, CONFIG.playerTop, CONFIG.playerBottom) - player.y
+        : (Number.isFinite(input.axisY) ? clamp(input.axisY, -1, 1) : 0) * limit;
+      const distance = Math.hypot(dx, dy);
+      const fraction = distance > limit ? limit / distance : 1;
+      player.x = clamp(player.x + dx * fraction, CONFIG.playerMargin, CONFIG.width - CONFIG.playerMargin);
+      player.y = clamp(player.y + dy * fraction, CONFIG.playerTop, CONFIG.playerBottom);
 
       if (s.phase === 'submission') {
         s.demand.y -= CONFIG.submissionSpeed * dt;
@@ -341,7 +345,7 @@
       this._moveBullets(dt);
 
       if (s.document.visible && !s.document.collected &&
-          Math.abs(s.player.x - s.document.x) <= CONFIG.documentPickupRadius) {
+          Math.hypot(s.player.x - s.document.x, s.player.y - s.document.y) <= CONFIG.documentPickupRadius) {
         s.document.collected = true;
         s.document.visible = false;
         s.barrier.weak = true;
@@ -440,7 +444,7 @@
       const difficulty = DIFFICULTIES[s.difficulty];
       const cycle = {
         kind: s.stage === 0 ? 'lanes' : s.stage === 1 ? 'aim' : 'wave',
-        burstCount: difficulty.burstCount, nextBurst: 0, targetX: s.player.x,
+        burstCount: difficulty.burstCount, nextBurst: 0, targetX: s.player.x, targetY: s.player.y,
         duration: difficulty.warningTime + (difficulty.burstCount - 1) * difficulty.burstInterval +
           600 / difficulty.bulletSpeed + difficulty.restTime
       };
@@ -530,7 +534,7 @@
         };
         if (attack.kind === 'aim') {
           Object.assign(warning, { fromX: CONFIG.width / 2, fromY: CONFIG.bulletSpawnY,
-            targetX: attack.targetX, targets: attack.targets, targetY: CONFIG.playerY });
+            targetX: attack.targetX, targets: attack.targets, targetY: attack.targetY });
         } else {
           warning.lanes = attack.lanes.slice();
           if (attack.side) warning.side = attack.side;
@@ -542,15 +546,18 @@
         s.attackPhase = s.bullets.length > 0 || attack.nextBurst < attack.burstCount ? 'firing' : 'rest';
       }
       if (attack.replyAt !== undefined && this._attackAge >= attack.replyAt && !attack.replyFired) {
-        if (attack.replyX === undefined) attack.replyX = s.player.x;
+        if (attack.replyX === undefined) {
+          attack.replyX = s.player.x;
+          attack.replyY = s.player.y;
+        }
         const delay = 0.60;
         const targets = [attack.replyX, attack.replyX - 38, attack.replyX + 38];
         if (this._attackAge < attack.replyAt + delay) {
           s.telegraphs.push({ kind: 'aim', fromX: 240, fromY: CONFIG.bulletSpawnY, targetX: attack.replyX,
-            targetY: CONFIG.playerY, targets, total: delay, remaining: attack.replyAt + delay - this._attackAge });
+            targetY: attack.replyY, targets, total: delay, remaining: attack.replyAt + delay - this._attackAge });
           s.attackPhase = 'warning';
         } else {
-          this._fireAimed(targets, difficulty.bulletSpeed);
+          this._fireAimed(targets, attack.replyY, difficulty.bulletSpeed);
           attack.replyFired = true;
         }
       }
@@ -559,7 +566,7 @@
     _fireBurst(attack, difficulty) {
       const s = this.state;
       if (attack.kind === 'aim') {
-        this._fireAimed(attack.targets, difficulty.bulletSpeed);
+        this._fireAimed(attack.targets, attack.targetY, difficulty.bulletSpeed);
       } else {
         for (const x of attack.lanes) {
           s.bullets.push({ x, y: CONFIG.bulletSpawnY, r: CONFIG.bulletRadius,
@@ -568,10 +575,10 @@
       }
     }
 
-    _fireAimed(targets, speed) {
+    _fireAimed(targets, targetY, speed) {
       for (const targetX of targets) {
         const dx = targetX - CONFIG.width / 2;
-        const dy = CONFIG.playerY - CONFIG.bulletSpawnY;
+        const dy = targetY - CONFIG.bulletSpawnY;
         const length = Math.hypot(dx, dy);
         this.state.bullets.push({ x: CONFIG.width / 2, y: CONFIG.bulletSpawnY, r: CONFIG.bulletRadius,
           vx: dx / length * speed, vy: dy / length * speed, kind: 'aim', targetX });

@@ -499,3 +499,56 @@ test('minutes freeze hazards, then require exactly three warned waves before sub
   game.submit(); until(game,s => s.phase === 'submit');
   assert.equal(game.drainEvents().filter(e => e.type === 'minutesRecorded').length,1);
 });
+
+test('free flight shares a speed cap on both axes, including diagonals and touch targets', () => {
+  for (const controls of [{axis:1, axisY:-1}, {targetX:440, targetY:330}]) {
+    const g = new Game({tutorial:false}); g.start();
+    g.step(.2, controls);
+    const {x,y} = g.state.player;
+    assert.ok(x > 240 && y < CONFIG.playerY);
+    assert.ok(Math.abs(Math.hypot(x-240,y-CONFIG.playerY)-CONFIG.playerSpeed*.2) < 1e-7);
+    g.step(.2, {}); assert.deepEqual([g.state.player.x, g.state.player.y],[x,y]);
+    g.step(2,{axisY:-1}); assert.equal(g.state.player.y,CONFIG.playerTop);
+    g.step(2,{targetY:9999}); assert.equal(g.state.player.y,CONFIG.playerBottom);
+    g.step(2,{targetY:CONFIG.playerTop+12}); assert.equal(g.state.player.y,CONFIG.playerTop+12);
+    g.pause(); g.step(1,{axisY:1}); assert.equal(g.state.player.y,CONFIG.playerTop+12);
+  }
+});
+
+test('picking up evidence requires contact in both dimensions', () => {
+  const g = new Game({tutorial:false}); g.start();
+  const s = g.state;
+  const x=s.document.x;
+  runFor(g,4,{targetX:x,targetY:CONFIG.playerTop});
+  assert.equal(s.document.visible,true); assert.equal(s.document.collected,false);
+  until(g,s=>s.document.collected,{targetX:x,targetY:s.document.y});
+  assert.ok(Math.hypot(s.player.x-x,s.player.y-s.document.y) <= CONFIG.documentPickupRadius);
+});
+
+test('aim warnings and bullets retain both coordinates of the original lock', () => {
+  const g = new Game({tutorial:false}); g.start();
+  until(g,s=>s.telegraphs.some(t=>t.kind==='aim'),{targetX:134,targetY:330});
+  const {targetX,targetY}=g.state.telegraphs[0];
+  assert.equal(targetY,330); assert.equal(targetX,134);
+  until(g,s=>s.bullets.length>0,{targetX:360,targetY:565});
+  const b=g.state.bullets[0];
+  assert.ok(Math.abs(b.x+(targetY-b.y)*b.vx/b.vy-targetX) < 1e-7);
+});
+
+test('shots, enemy hits and the submitted paper use the current flight position', () => {
+  const g = new Game({tutorial:false}); g.start();
+  const s=g.state;
+  g.step(.5,{axisY:-1});
+  assert.ok(s.shots.some(shot=>shot.y<CONFIG.playerY-100));
+  const y=s.player.y;
+  s.bullets.push({x:s.player.x,y:CONFIG.playerY,r:6,vx:0,vy:1});
+  g.step(.01); assert.equal(s.hits,0);
+  s.bullets.push({x:s.player.x,y,r:6,vx:0,vy:1});
+  g.step(.01); assert.equal(s.hits,1);
+  runFor(g,1,{targetY:CONFIG.playerY});
+  reachSubmission(g);
+  until(g, s=>s.player.y===CONFIG.playerTop && Math.abs(s.player.x-s.window.x)<1,
+    s=>({targetX:s.window.x,targetY:CONFIG.playerTop}));
+  assert.equal(g.submit(),true); assert.equal(s.demand.y,CONFIG.playerTop-24);
+  until(g,s=>s.phase==='stageClear');
+});

@@ -111,8 +111,8 @@
       g.fillStyle = floor; g.fillRect(0, 140, W, 460);
       for (let i = -6; i <= 6; i++) strokeLine(g, 240 + 42*i, 143, 240 + 77*i, H, '#27304a', 1);
       for (const y of [198, 224, 257, 297, 346, 406, 476, 562]) strokeLine(g, 0, y, W, y, '#263147', 1);
-      g.fillStyle = '#71dbc50d'; g.fillRect(0, 512, W, 39);
-      g.setLineDash([4,8]); strokeLine(g, 0, 530, W, 530, '#70b6ba4a', 1); g.setLineDash([]);
+      g.fillStyle = '#71dbc50d'; g.fillRect(0, 238, W, 333);
+      g.setLineDash([4,8]); for (const y of [238, 570]) strokeLine(g, 0, y, W, y, '#70b6ba4a', 1); g.setLineDash([]);
       for (let x = 10; x < W; x += 12) g.fillRect(x, 584, 5, 2);
       roomCache[stage] = tile;
     }
@@ -230,10 +230,10 @@
         for (const rawX of t.lanes) {
           const x = value(rawX, NaN);
           if (!Number.isFinite(x)) continue;
-          rounded(ctx, x - 20, 190, 40, 370, 9);
+          rounded(ctx, x - 20, 190, 40, 399, 9);
           ctx.fill();
           ctx.setLineDash([8, 9]);
-          strokeLine(ctx, x, 194, x, 557, "rgba(250,143,126," + (.40 + progress * .35) + ")", 2);
+          strokeLine(ctx, x, 194, x, 589, "rgba(250,143,126," + (.40 + progress * .35) + ")", 2);
           ctx.setLineDash([]);
           ctx.beginPath();
           ctx.moveTo(x - 8, 203);
@@ -248,7 +248,7 @@
         const targetY = value(t.targetY, 530);
         ctx.setLineDash([7, 8]);
         for (const endX of t.targets || [targetX]) {
-          strokeLine(ctx, fromX, fromY, endX, 530, "rgba(255,157,125," + (.55 + progress * .35) + ")", 2);
+          strokeLine(ctx, fromX, fromY, endX, targetY, "rgba(255,157,125," + (.55 + progress * .35) + ")", 2);
         }
         ctx.setLineDash([]);
         circle(ctx, targetX, targetY, 19);
