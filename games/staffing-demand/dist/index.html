@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101525">
+  <meta name="description" content="資料を集め、反論を崩し、人員増の要求を採択へ。全3段階を遊べる交渉シューティングゲーム。">
+  <title>通せ！われらの要求書</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='12' y='4' width='40' height='56' rx='7' fill='%23f4f7f2'/%3E%3Cpath d='M22 19h20M22 28h20' stroke='%23102d33' stroke-width='4'/%3E%3Ccircle cx='39' cy='44' r='12' fill='%23cf514b'/%3E%3Cpath d='m33 44 4 4 8-9' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script src="engine.js" defer></script>
+  <script src="art.js" defer></script>
+  <script src="feedback.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="bar-inner"><div class="brand"><svg viewBox="0 0 32 32" width="33" height="33" aria-hidden="true" shape-rendering="crispEdges"><path fill="#f5aa63" d="M1 20h7v2H1zm3 5h5v2H4z"/><path fill="#f5e7c7" d="M5 13h5v-2h5V9h5V7h6V5h5v4h-2v5h-2v6h-2v6h-3v-2h-3v-2h-3v5h-3v-7h-2v-2H8v-2H5z"/><path fill="#63d6c6" d="M12 17h5v-2h3v-2h3v-2h4v2h-3v2h-3v2h-3v3h-3v7h-2v-7h-1z"/></svg><span>UNION <b>ARCADE</b></span></div>
+      <div class="top-actions"><button type="button" class="quiet-button" id="soundButton" aria-pressed="true" aria-label="サウンドをオフにする"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9h4l5-4v14l-5-4H3z"/><path class="waves" d="M16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/><path class="mute" d="m16 9 6 6m0-6-6 6"/></svg><span id="soundLabel">音あり</span></button><button type="button" class="quiet-button" id="helpButton"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.6 2.1c-.9.5-1.4 1-1.4 2.4M12 16h.01"/></svg><span>遊び方</span></button><button type="button" class="quiet-button pause-btn" id="pauseButton" hidden>一時停止</button></div></div>
+    </header>
+    <main id="menuView" class="menu-view">
+      <section class="cover" aria-labelledby="gameTitle">
+        <img class="cover-art" src="cover.webp" alt="夕暮れの病院街を、組合の代表が要求書を手に紙飛行機で飛ぶ">
+        <div class="cover-shade"></div>
+        <div class="cover-type">
+          <p class="eyebrow"><i class="genre-mark" aria-hidden="true"></i> 病院交渉シューティング</p>
+          <h1 id="gameTitle"><span class="title-call">通せ！</span><span class="title-small">われらの</span><span class="title-main">要求書</span></h1>
+          <p class="cover-lead">理事の反論をかわし、人員増を勝ち取ろう。</p>
+        </div>
+        <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+      </section>
+      <section class="console" aria-label="ゲーム設定">
+        <fieldset class="difficulty-field"><legend>難易度を選択</legend><div class="difficulty-options">
+          <label class="difficulty-choice"><input type="radio" name="difficulty" value="easy"><span><i class="meter m1" aria-hidden="true"></i>やさしい</span></label>
+          <label class="difficulty-choice"><input type="radio" name="difficulty" value="normal" checked><span><i class="meter m2" aria-hidden="true"></i>ふつう</span></label>
+          <label class="difficulty-choice"><input type="radio" name="difficulty" value="hard"><span><i class="meter m3" aria-hidden="true"></i>むずかしい</span></label>
+        </div></fieldset>
+        <div class="start-area"><label class="guide-choice"><input id="tutorialToggle" type="checkbox" checked><span>初回の操作ガイド</span></label>
+        <button type="button" id="startButton" class="primary-button start-button"><span class="pixel-play" aria-hidden="true"></span>交渉スタート</button></div>
+      </section>
+      <div class="menu-info"><p id="difficultyInfo">弱点を狙い、弾の切れ目で位置を変えよう。</p><p id="menuRecord">ベスト記録　―</p></div>
+    </main>
+
+    <main id="gameView" class="game-view" hidden>
+      <aside class="mission-panel">
+        <p class="eyebrow">労使交渉</p><h1>人員増要求</h1>
+        <ol class="stage-list"><li data-step="0"><span class="step-number">1</span><div><strong>必要性を示す</strong><small>不足している業務と時間帯</small></div></li><li data-step="1"><span class="step-number">2</span><div><strong>費用と効果を示す</strong><small>増員に必要な条件</small></div></li><li data-step="2"><span class="step-number">3</span><div><strong>実施計画を示す</strong><small>採用・配置・受入れ</small></div></li></ol>
+        <div class="director-quote"><span class="small-label">理事からの確認</span><p id="directorLine"></p></div>
+        <div class="evidence-card"><div class="evidence-top"><span class="small-label">今回の根拠資料</span><span id="documentStatus" class="status-label">未回収</span></div><h2 id="documentTitle"></h2><p id="documentSummary"></p></div>
+        <div class="legend"><span><i class="legend-bullet"></i> 反論の弾</span><span><i class="legend-document"></i> 根拠資料</span></div>
+        <p class="side-note" id="stageTactic"></p>
+      </aside>
+      <section class="play-column" aria-label="ゲーム画面">
+        <div class="game-hud"><div class="hud-title"><span id="stageCount" class="small-label">第1段階 / 3</span><strong id="stageTitle">必要性を示す</strong></div><div class="hud-right"><span id="difficultyBadge" class="difficulty-badge">ふつう</span><span class="hit-count">被弾 <strong id="hitCount">0</strong></span></div></div>
+        <div class="mobile-context"><p id="mobileDirectorLine"></p><div><span id="mobileDocumentTitle"></span><span id="mobileDocumentStatus">未回収</span></div></div>
+        <div class="objective-row"><span id="phaseLabel">資料回収</span><strong id="phaseHint">資料を回収しよう</strong></div>
+        <div class="arena-frame"><canvas id="arena" width="480" height="600" tabindex="0" aria-label="左右に移動して資料を回収するゲーム盤面"></canvas><div id="toast" class="toast" role="status" aria-live="polite"></div><div id="attackHint" class="attack-hint" aria-hidden="true"></div></div>
+        <div class="control-row"><div id="moveStrip" class="move-strip" role="group" aria-label="左右移動の専用操作帯"><span class="strip-grip" aria-hidden="true"></span><strong id="stripLabel">ここを左右にスライド</strong><small>指を離すと止まる</small><span class="strip-track" aria-hidden="true"><i id="stripThumb"></i></span></div><button type="button" id="submitButton" class="submit-button" disabled><span class="submit-icon" aria-hidden="true"></span><strong>要求書を提出</strong><small id="submitHint">反論突破後</small></button></div>
+        <div class="input-note"><span class="keyboard-note">移動 <kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd>　提出 <kbd>Space</kbd></span><span class="touch-note">通常ショットは自動で発射</span></div>
+      </section>
+    </main>
+    <footer class="app-footer" id="menuFooter">架空の病院を舞台にした、全3ステージの交渉ゲーム。<span>VER. 1.1</span></footer>
+    <dialog id="gameDialog" aria-labelledby="dialogTitle"><div id="dialogContent"></div></dialog>
+    <noscript><div class="noscript">このゲームを遊ぶには、ブラウザのJavaScriptを有効にしてください。</div></noscript>
+  </div>
+</body>
+</html>
